@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Player Netflix Style</title>
+    <link rel="stylesheet" href="style.css" />
+    <link rel="icon" href="logoIcon.png">
+</head>
+
+<body>
+
+
+    <div class="player">
+        <video id="video"></video>
+
+        <div class="video-title" id="videoTitle"></div>
+
+        <div class="controls">
+            <div class="progress-container" id="progressContainer">
+                <div class="progress" id="progress"></div>
+            </div>
+
+
+            <div class="controls-row">
+                <button id="playPause" data-icon="▶">▶</button>
+
+
+                <input id="volume" type="range" min="0" max="1" step="0.01" value="1" />
+
+
+                <div class="time" id="time">0:00 / 0:00</div>
+
+
+                <button id="fullscreen">⛶</button>
+            </div>
+        </div>
+    </div>
+
+    <button class="queue-toggle-btn" id="queueToggle" title="Mostrar fila">
+        <span class="queue-icon">☰</span>
+        <span class="queue-badge" id="queueBadge">10</span>
+    </button>
+
+    <div class="queue-menu" id="queueMenu">
+        <div class="queue-header">
+            <div class="queue-header-content">
+                <h3>Fila de Reprodução</h3>
+                <span class="queue-count" id="queueCount">10 vídeos</span>
+            </div>
+            <button id="queueClose" class="close-btn" title="Fechar">×</button>
+        </div>
+        <div class="queue-search">
+            <input type="text" id="queueSearch" placeholder="Buscar na fila..." />
+        </div>
+        <ul class="queue-list" id="queueList">
+            <!-- Itens da fila serão adicionados dinamicamente -->
+        </ul>
+    </div>
+
+
+    <script src="script.js"></script>
+</body>
+
+</html>

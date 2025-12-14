@@ -1,0 +1,19 @@
+{
+  "name": "player-test",
+  "version": "1.0.0",
+  "description": "Netflix-style video player with Supabase integration",
+  "main": "index.html",
+  "scripts": {
+    "dev": "npx serve .",
+    "build": "echo 'No build step required'"
+  },
+  "keywords": [
+    "video",
+    "player",
+    "netflix",
+    "supabase"
+  ],
+  "author": "",
+  "license": "MIT"
+}
+
