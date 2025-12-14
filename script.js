@@ -584,9 +584,26 @@ uploadForm.addEventListener("submit", async (e) => {
         const title = videoTitleInput.value.trim();
         const duration = formatDuration(videoDurationSeconds);
 
-        // Gerar nomes únicos para os arquivos
-        const videoFileName = `${Date.now()}_${videoFile.name}`;
-        const thumbnailFileName = `${Date.now()}_${thumbnailFile.name}`;
+        // Função para sanitizar nomes de arquivos
+        function sanitizeFileName(fileName) {
+            // Extrair extensão
+            const lastDot = fileName.lastIndexOf('.');
+            const name = lastDot > 0 ? fileName.substring(0, lastDot) : fileName;
+            const extension = lastDot > 0 ? fileName.substring(lastDot) : '';
+            
+            // Remover caracteres especiais e substituir espaços por underscores
+            const sanitized = name
+                .replace(/[^a-zA-Z0-9_-]/g, '_') // Substituir caracteres especiais por underscore
+                .replace(/\s+/g, '_') // Substituir espaços por underscore
+                .replace(/_+/g, '_') // Remover underscores duplicados
+                .replace(/^_+|_+$/g, ''); // Remover underscores no início e fim
+            
+            return sanitized + extension;
+        }
+
+        // Gerar nomes únicos e sanitizados para os arquivos
+        const videoFileName = `${Date.now()}_${sanitizeFileName(videoFile.name)}`;
+        const thumbnailFileName = `${Date.now()}_${sanitizeFileName(thumbnailFile.name)}`;
 
         // Upload do vídeo
         updateUploadProgress(10, "Enviando vídeo...");
