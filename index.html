@@ -7,6 +7,7 @@
     <title>Player Netflix Style</title>
     <link rel="stylesheet" href="style.css" />
     <link rel="icon" href="logoIcon.png">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 
 <body>
@@ -43,6 +44,63 @@
         <span class="queue-badge" id="queueBadge">10</span>
     </button>
 
+    <!-- Modal de Upload -->
+    <div class="upload-modal" id="uploadModal">
+        <div class="upload-modal-content">
+            <div class="upload-modal-header">
+                <h2>Adicionar Novo Vídeo</h2>
+                <button class="upload-close-btn" id="uploadCloseBtn">×</button>
+            </div>
+            <form id="uploadForm">
+                <div class="upload-form-group">
+                    <label for="videoTitle">Título do Vídeo *</label>
+                    <input type="text" id="videoTitleInput" name="videoTitle" required placeholder="Digite o título do vídeo">
+                </div>
+
+                <div class="upload-form-group">
+                    <label for="videoFile">Arquivo de Vídeo *</label>
+                    <div class="file-input-wrapper">
+                        <input type="file" id="videoFile" name="videoFile" accept="video/*" required>
+                        <label for="videoFile" class="file-input-label">
+                            <span class="file-input-text" id="videoFileText">Selecione o arquivo de vídeo</span>
+                            <span class="file-input-btn">Escolher Arquivo</span>
+                        </label>
+                    </div>
+                    <div class="video-preview" id="videoPreview"></div>
+                    <div class="video-duration" id="videoDuration" style="display: none;">
+                        <span>Duração: </span><span id="durationText">Calculando...</span>
+                    </div>
+                </div>
+
+                <div class="upload-form-group">
+                    <label for="thumbnailFile">Thumbnail (Imagem) *</label>
+                    <div class="file-input-wrapper">
+                        <input type="file" id="thumbnailFile" name="thumbnailFile" accept="image/*" required>
+                        <label for="thumbnailFile" class="file-input-label">
+                            <span class="file-input-text" id="thumbnailFileText">Selecione a imagem de thumbnail</span>
+                            <span class="file-input-btn">Escolher Arquivo</span>
+                        </label>
+                    </div>
+                    <div class="thumbnail-preview" id="thumbnailPreview"></div>
+                </div>
+
+                <div class="upload-progress" id="uploadProgress" style="display: none;">
+                    <div class="upload-progress-bar">
+                        <div class="upload-progress-fill" id="uploadProgressFill"></div>
+                    </div>
+                    <span class="upload-progress-text" id="uploadProgressText">0%</span>
+                </div>
+
+                <div class="upload-message" id="uploadMessage"></div>
+
+                <div class="upload-form-actions">
+                    <button type="button" class="upload-cancel-btn" id="uploadCancelBtn">Cancelar</button>
+                    <button type="submit" class="upload-submit-btn" id="uploadSubmitBtn">Enviar Vídeo</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <div class="queue-menu" id="queueMenu">
         <div class="queue-header">
             <div class="queue-header-content">
@@ -54,6 +112,10 @@
         <div class="queue-search">
             <input type="text" id="queueSearch" placeholder="Buscar na fila..." />
         </div>
+        <button class="upload-btn-in-menu" id="uploadBtn" title="Adicionar vídeo">
+            <span class="upload-btn-icon">+</span>
+            <span class="upload-btn-text">Adicionar Vídeo</span>
+        </button>
         <ul class="queue-list" id="queueList">
             <!-- Itens da fila serão adicionados dinamicamente -->
         </ul>
