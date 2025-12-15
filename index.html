@@ -116,9 +116,41 @@
             <span class="upload-btn-icon">+</span>
             <span class="upload-btn-text">Adicionar Vídeo</span>
         </button>
+        <button class="stats-btn-in-menu" id="statsBtn" title="Estatísticas">
+            <span class="stats-btn-icon">📊</span>
+            <span class="stats-btn-text">Estatísticas</span>
+        </button>
         <ul class="queue-list" id="queueList">
             <!-- Itens da fila serão adicionados dinamicamente -->
         </ul>
+    </div>
+
+    <!-- Modal de Estatísticas -->
+    <div class="stats-modal" id="statsModal">
+        <div class="stats-modal-content">
+            <div class="stats-modal-header">
+                <h2>Estatísticas</h2>
+                <button class="stats-close-btn" id="statsCloseBtn">×</button>
+            </div>
+            <div class="stats-body">
+                <div class="stat-card">
+                    <div class="stat-value" id="totalVideos">0</div>
+                    <div class="stat-label">Total de Vídeos</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="totalViews">0</div>
+                    <div class="stat-label">Total de Visualizações</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="totalWatchTime">0h</div>
+                    <div class="stat-label">Tempo Total Assistido</div>
+                </div>
+                <div class="stat-section">
+                    <h3>Vídeos Mais Populares</h3>
+                    <ul class="popular-videos" id="popularVideos"></ul>
+                </div>
+            </div>
+        </div>
     </div>
 
 
