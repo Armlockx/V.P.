@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Player Netflix Style</title>
+    <title>V.P. Player</title>
     <link rel="stylesheet" href="style.css" />
     <link rel="icon" href="logoIcon.png">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -17,6 +17,31 @@
         <video id="video"></video>
 
         <div class="video-title" id="videoTitle"></div>
+
+        <!-- Loader estilo Netflix -->
+        <div class="video-loader" id="videoLoader">
+            <div class="loader-spinner">
+                <div class="spinner-segment"></div>
+                <div class="spinner-segment"></div>
+                <div class="spinner-segment"></div>
+                <div class="spinner-segment"></div>
+                <div class="spinner-segment"></div>
+                <div class="spinner-segment"></div>
+                <div class="spinner-segment"></div>
+                <div class="spinner-segment"></div>
+                <div class="spinner-segment"></div>
+                <div class="spinner-segment"></div>
+                <div class="spinner-segment"></div>
+                <div class="spinner-segment"></div>
+            </div>
+            <div class="loader-percentage" id="loaderPercentage">0%</div>
+        </div>
+
+        <!-- Notificação de comando -->
+        <div class="command-notification" id="commandNotification">
+            <div class="notification-icon" id="notificationIcon"></div>
+            <div class="notification-text" id="notificationText"></div>
+        </div>
 
         <div class="controls">
             <div class="progress-container" id="progressContainer">
@@ -33,16 +58,15 @@
 
                 <div class="time" id="time">0:00 / 0:00</div>
 
+                <button class="queue-toggle-btn" id="queueToggle" title="Mostrar fila">
+                    <span class="queue-icon">☰</span>
+                    <span class="queue-badge" id="queueBadge">10</span>
+                </button>
 
                 <button id="fullscreen">⛶</button>
             </div>
         </div>
     </div>
-
-    <button class="queue-toggle-btn" id="queueToggle" title="Mostrar fila">
-        <span class="queue-icon">☰</span>
-        <span class="queue-badge" id="queueBadge">10</span>
-    </button>
 
     <!-- Modal de Upload -->
     <div class="upload-modal" id="uploadModal">

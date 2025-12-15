@@ -7,11 +7,16 @@
     let queueMenu, queueList, queueToggle, queueClose, videoTitle, queueBadge, queueCount, queueSearch;
     let uploadBtn; // Botão de upload - precisa ser acessível globalmente
     let statsBtn, statsModal, statsCloseBtn; // Elementos do dashboard
+    let videoLoader, loaderPercentage; // Loader
+    let uploadModal; // Modal de upload
+    let commandNotification, notificationIcon, notificationText; // Notificação de comando
     let videoList = [];
     let currentVideoIndex = 0;
     let controlsTimeout = null;
     let controls;
     let supabaseClient = null;
+    let isLoading = false;
+    let isSeeking = false;
     
     // Configuração do Supabase
     const SUPABASE_URL = 'https://esvjyjnyrmysvylnszjd.supabase.co';
@@ -39,6 +44,11 @@
         statsBtn = document.getElementById("statsBtn"); // Botão de estatísticas
         statsModal = document.getElementById("statsModal"); // Modal de estatísticas
         statsCloseBtn = document.getElementById("statsCloseBtn"); // Botão de fechar modal
+        videoLoader = document.getElementById("videoLoader"); // Loader
+        loaderPercentage = document.getElementById("loaderPercentage"); // Porcentagem do loader
+        commandNotification = document.getElementById("commandNotification"); // Notificação de comando
+        notificationIcon = document.getElementById("notificationIcon"); // Ícone da notificação
+        notificationText = document.getElementById("notificationText"); // Texto da notificação
         controls = document.querySelector(".controls");
         
         // Verificar se todos os elementos foram encontrados
@@ -95,6 +105,7 @@
             updateVideoTitle();
         } else {
             console.warn('Nenhum vídeo encontrado no banco de dados');
+            document.title = "V.P. Player";
         }
     }
 
@@ -110,6 +121,10 @@
         
         currentVideoIndex = index;
         const selectedVideo = videoList[index];
+        
+        // Mostrar loader
+        showLoader("🕐");
+        
         video.src = selectedVideo.url;
         video.load();
         updateQueueDisplay();
@@ -117,6 +132,33 @@
         
         if (!video.paused) {
             video.play();
+        }
+    }
+
+    // Funções para controlar o loader
+    function showLoader(text = "") {
+        if (videoLoader) {
+            videoLoader.classList.add("active");
+            isLoading = true;
+            if (loaderPercentage && text) {
+                loaderPercentage.textContent = text;
+            }
+        }
+    }
+
+    function hideLoader() {
+        if (videoLoader) {
+            videoLoader.classList.remove("active");
+            isLoading = false;
+            if (loaderPercentage) {
+                loaderPercentage.textContent = "0%";
+            }
+        }
+    }
+
+    function updateLoaderProgress(percent) {
+        if (loaderPercentage && isLoading) {
+            loaderPercentage.textContent = `${Math.round(percent)}%`;
         }
     }
 
@@ -178,6 +220,13 @@
         if (videoTitle && currentVideoIndex >= 0 && currentVideoIndex < videoList.length) {
             videoTitle.textContent = videoList[currentVideoIndex].title;
         }
+        
+        // Atualizar título da página
+        if (currentVideoIndex >= 0 && currentVideoIndex < videoList.length && videoList[currentVideoIndex].title) {
+            document.title = `V.P. Player - ${videoList[currentVideoIndex].title}`;
+        } else {
+            document.title = "V.P. Player";
+        }
     }
 
     function showControls() {
@@ -185,16 +234,11 @@
         
         controls.classList.remove("hidden");
         videoTitle.classList.remove("hidden");
-        if (queueToggle && !queueMenu.classList.contains("open")) {
-            queueToggle.classList.remove("hidden");
-        }
+        // Botão agora está na barra de controles, não precisa esconder/mostrar separadamente
         clearTimeout(controlsTimeout);
         controlsTimeout = setTimeout(() => {
             controls.classList.add("hidden");
             videoTitle.classList.add("hidden");
-            if (queueToggle && !queueMenu.classList.contains("open")) {
-                queueToggle.classList.add("hidden");
-            }
         }, 2000);
     }
 
@@ -205,9 +249,6 @@
         controlsTimeout = setTimeout(() => {
             controls.classList.add("hidden");
             videoTitle.classList.add("hidden");
-            if (queueToggle && !queueMenu.classList.contains("open")) {
-                queueToggle.classList.add("hidden");
-            }
         }, 2000);
     }
 
@@ -242,12 +283,87 @@ video.ontimeupdate = () => {
     time.textContent = `${current} / ${total}`;
 };
 
+        // Eventos de carregamento do vídeo
+        video.addEventListener("loadstart", () => {
+            showLoader("🕐");
+        });
+
+        video.addEventListener("loadedmetadata", () => {
+            if (isLoading && !isSeeking) {
+                updateLoaderProgress(30);
+            }
+        });
+
+        video.addEventListener("loadeddata", () => {
+            if (isLoading && !isSeeking) {
+                updateLoaderProgress(60);
+            }
+        });
+
+        video.addEventListener("progress", () => {
+            if (isLoading && !isSeeking && video.buffered.length > 0) {
+                const bufferedEnd = video.buffered.end(video.buffered.length - 1);
+                const duration = video.duration;
+                if (duration > 0) {
+                    const bufferedPercent = (bufferedEnd / duration) * 100;
+                    updateLoaderProgress(Math.min(bufferedPercent, 90));
+                }
+            }
+        });
+
+        video.addEventListener("canplay", () => {
+            if (isLoading && !isSeeking) {
+                updateLoaderProgress(95);
+            }
+        });
+
+        video.addEventListener("canplaythrough", () => {
+            if (!isSeeking) {
+                updateLoaderProgress(100);
+                setTimeout(() => {
+                    hideLoader();
+                }, 300);
+            }
+        });
+
+        video.addEventListener("waiting", () => {
+            if (!isSeeking) {
+                showLoader("🕐");
+            }
+        });
+
+        video.addEventListener("playing", () => {
+            if (!isSeeking) {
+                hideLoader();
+            }
+        });
+
+        // Eventos de seeking
+        video.addEventListener("seeking", () => {
+            isSeeking = true;
+            showLoader("🔎");
+        });
+
+        video.addEventListener("seeked", () => {
+            isSeeking = false;
+            setTimeout(() => {
+                hideLoader();
+            }, 200);
+        });
+
         if (progressContainer) {
 progressContainer.onclick = (e) => {
     const width = progressContainer.clientWidth;
     const clickX = e.offsetX;
-    video.currentTime = (clickX / width) * video.duration;
-};
+                const newTime = (clickX / width) * video.duration;
+                
+                // Mostrar loader ao fazer seek
+                if (Math.abs(video.currentTime - newTime) > 1) {
+                    showLoader("🔎");
+                }
+                
+                video.currentTime = newTime;
+            };
         }
 
         if (volume) {
@@ -277,6 +393,8 @@ fullscreen.onclick = () => {
 
         video.onended = () => {
             if (currentVideoIndex < videoList.length - 1) {
+                // Mostrar loader ao passar para próximo vídeo
+                showLoader("Próximo vídeo...");
                 loadVideo(currentVideoIndex + 1);
                 video.play();
                 playPause.textContent = "⏸";
@@ -285,10 +403,27 @@ fullscreen.onclick = () => {
         };
 
         if (queueToggle) {
-            queueToggle.onclick = () => {
+            queueToggle.onclick = (e) => {
+                e.stopPropagation();
                 const isOpen = queueMenu.classList.toggle("open");
                 queueToggle.classList.toggle("active");
                 document.body.classList.toggle("menu-open", isOpen);
+                
+                // Ajustar posição do menu e seta baseado na posição do botão
+                if (isOpen && queueMenu) {
+                    const toggleRect = queueToggle.getBoundingClientRect();
+                    const menuWidth = 360;
+                    // Posicionar menu bem à direita, alinhado com o botão
+                    const menuRight = Math.max(10, window.innerWidth - toggleRect.right);
+                    // Calcular offset da seta: centro do botão relativo à borda direita do menu
+                    const toggleCenterX = toggleRect.left + toggleRect.width / 2;
+                    const menuLeftEdge = window.innerWidth - menuRight - menuWidth;
+                    const arrowOffset = toggleCenterX - menuLeftEdge;
+                    
+                    queueMenu.style.right = `${menuRight}px`;
+                    queueMenu.style.setProperty('--arrow-offset', `${Math.max(20, Math.min(340, arrowOffset))}px`);
+                }
+                
                 if (isOpen && queueSearch) {
                     queueSearch.focus();
                 }
@@ -299,6 +434,7 @@ fullscreen.onclick = () => {
                 if (statsBtn) {
                     statsBtn.style.display = isOpen ? "flex" : "none";
                 }
+                showControls();
             };
         }
 
@@ -337,12 +473,12 @@ fullscreen.onclick = () => {
                 showControls();
             });
 
-            player.addEventListener("mouseleave", (e) => {
-                const relatedTarget = e.relatedTarget;
-                if (!relatedTarget || (!relatedTarget.closest(".queue-menu") && !relatedTarget.closest(".queue-toggle-btn"))) {
-                    hideControls();
-                }
-            });
+        player.addEventListener("mouseleave", (e) => {
+            const relatedTarget = e.relatedTarget;
+            if (!relatedTarget || (!relatedTarget.closest(".queue-menu") && !relatedTarget.closest(".queue-toggle-btn") && !relatedTarget.closest(".controls-row"))) {
+                hideControls();
+            }
+        });
 
             player.addEventListener("mousemove", () => {
                 showControls();
@@ -398,17 +534,7 @@ fullscreen.onclick = () => {
             });
         }
 
-        if (queueToggle) {
-            queueToggle.addEventListener("mouseenter", () => {
-                showControls();
-            });
-
-            queueToggle.addEventListener("mouseleave", () => {
-                if (queueMenu && !queueMenu.classList.contains("open")) {
-                    hideControls();
-                }
-            });
-        }
+        // Botão agora está na barra de controles, não precisa de eventos separados de mouse
 
         if (queueMenu) {
             queueMenu.addEventListener("mouseenter", () => {
@@ -431,6 +557,143 @@ fullscreen.onclick = () => {
         showControls();
     }
 
+    // Função para mostrar notificação de comando
+    function showCommandNotification(icon, text = "") {
+        if (!commandNotification || !notificationIcon || !notificationText) return;
+        
+        notificationIcon.textContent = icon;
+        notificationText.textContent = text;
+        
+        commandNotification.classList.add("show");
+        
+        // Remover após 1.5 segundos
+        setTimeout(() => {
+            commandNotification.classList.remove("show");
+        }, 1500);
+    }
+
+    // ==================== ATALHOS DE TECLADO ====================
+    function initKeyboardShortcuts() {
+        document.addEventListener("keydown", (e) => {
+            // Ignorar se estiver digitando em um input, textarea ou se algum modal estiver aberto
+            if (e.target.tagName === "INPUT" || 
+                e.target.tagName === "TEXTAREA" || 
+                (statsModal && statsModal.classList.contains("active")) ||
+                (uploadModal && uploadModal.classList.contains("active"))) {
+                return;
+            }
+
+            // Espaço: Play/Pause
+            if (e.code === "Space") {
+                e.preventDefault();
+                if (video.paused) {
+                    video.play();
+                    if (playPause) {
+                        playPause.textContent = "⏸";
+                        playPause.setAttribute("data-icon", "⏸");
+                    }
+                    showCommandNotification("▶", "");
+                } else {
+                    video.pause();
+                    if (playPause) {
+                        playPause.textContent = "▶";
+                        playPause.setAttribute("data-icon", "▶");
+                    }
+                    showCommandNotification("⏸", "");
+                }
+                showControls();
+                return;
+            }
+
+            // F: Fullscreen
+            if (e.code === "KeyF") {
+                e.preventDefault();
+                if (!document.fullscreenElement) {
+                    if (player) player.requestFullscreen();
+                } else {
+                    document.exitFullscreen();
+                }
+                showControls();
+                return;
+            }
+
+            // M: Mudo
+            if (e.code === "KeyM") {
+                e.preventDefault();
+                if (video.muted) {
+                    video.muted = false;
+                    if (volume) volume.value = video.volume;
+                    const volumePercent = Math.round(video.volume * 100);
+                    showCommandNotification("🔊", `${volumePercent}%`);
+                } else {
+                    video.muted = true;
+                    showCommandNotification("🔇", "");
+                }
+                if (volume) updateVolumeProgress();
+                showControls();
+                return;
+            }
+
+            // Setas: Voltar/Avançar 10s
+            if (e.code === "ArrowLeft") {
+                e.preventDefault();
+                if (video.duration) {
+                    video.currentTime = Math.max(0, video.currentTime - 10);
+                    showCommandNotification("⏪", "-10s");
+                    showControls();
+                }
+                return;
+            }
+
+            if (e.code === "ArrowRight") {
+                e.preventDefault();
+                if (video.duration) {
+                    video.currentTime = Math.min(video.duration, video.currentTime + 10);
+                    showCommandNotification("⏩", "+10s");
+                    showControls();
+                }
+                return;
+            }
+
+            // ↑: Aumentar volume
+            if (e.code === "ArrowUp") {
+                e.preventDefault();
+                video.volume = Math.min(1, video.volume + 0.1);
+                if (volume) volume.value = video.volume;
+                video.muted = false;
+                const volumePercent = Math.round(video.volume * 100);
+                showCommandNotification("🔊", `${volumePercent}%`);
+                updateVolumeProgress();
+                showControls();
+                return;
+            }
+
+            // ↓: Diminuir volume
+            if (e.code === "ArrowDown") {
+                e.preventDefault();
+                video.volume = Math.max(0, video.volume - 0.1);
+                if (volume) volume.value = video.volume;
+                const volumePercent = Math.round(video.volume * 100);
+                showCommandNotification("🔉", `${volumePercent}%`);
+                updateVolumeProgress();
+                showControls();
+                return;
+            }
+
+            // Números: Pular para posição (0-9 = 0% a 90%)
+            const numKey = parseInt(e.key);
+            if (!isNaN(numKey) && numKey >= 0 && numKey <= 9) {
+                e.preventDefault();
+                if (video.duration) {
+                    const targetPercent = numKey * 10;
+                    video.currentTime = (video.duration * targetPercent) / 100;
+                    showControls();
+                }
+                return;
+            }
+        });
+    }
+
     // Inicializar upload de vídeos
     function initUpload() {
         if (typeof supabase === 'undefined') {
@@ -441,7 +704,7 @@ fullscreen.onclick = () => {
         supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
         // uploadBtn já foi inicializado em initDOMElements() como variável global
-        const uploadModal = document.getElementById("uploadModal");
+        uploadModal = document.getElementById("uploadModal");
         const uploadCloseBtn = document.getElementById("uploadCloseBtn");
         const uploadCancelBtn = document.getElementById("uploadCancelBtn");
         const uploadForm = document.getElementById("uploadForm");
@@ -869,6 +1132,7 @@ fullscreen.onclick = () => {
         }
         
         initEventListeners();
+        initKeyboardShortcuts(); // Inicializar atalhos de teclado
         initUpload();
         initStats(); // Inicializar dashboard
         
