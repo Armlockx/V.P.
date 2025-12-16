@@ -10,6 +10,8 @@
     let videoLoader, loaderPercentage; // Loader
     let uploadModal; // Modal de upload
     let commandNotification, notificationIcon, notificationText; // Notificação de comando
+    let authModal, loginForm, registerForm, authTabs, authClose; // Elementos de autenticação
+    let logoutBtn; // Botão de logout
     let videoList = [];
     let currentVideoIndex = 0;
     let controlsTimeout = null;
@@ -21,6 +23,15 @@
     // Configuração do Supabase
     const SUPABASE_URL = 'https://esvjyjnyrmysvylnszjd.supabase.co';
     const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVzdmp5am55cm15c3Z5bG5zempkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU3MzY2ODMsImV4cCI6MjA4MTMxMjY4M30.ZyEgF8y4cIdCPnlcfMOLt0fYMoZCJkXCdc6eqeF8xAA';
+    
+    // Inicializar cliente Supabase com Auth
+    function initSupabase() {
+        if (typeof supabase !== 'undefined') {
+            supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+            return true;
+        }
+        return false;
+    }
     
     // Função para inicializar elementos do DOM
     function initDOMElements() {
@@ -50,6 +61,12 @@
         notificationIcon = document.getElementById("notificationIcon"); // Ícone da notificação
         notificationText = document.getElementById("notificationText"); // Texto da notificação
         controls = document.querySelector(".controls");
+        authModal = document.getElementById("authModal"); // Modal de autenticação
+        loginForm = document.getElementById("loginForm"); // Formulário de login
+        registerForm = document.getElementById("registerForm"); // Formulário de registro
+        authTabs = document.querySelectorAll(".auth-tab"); // Tabs de autenticação
+        authClose = document.getElementById("authClose"); // Botão de fechar modal
+        logoutBtn = document.getElementById("logoutBtn"); // Botão de logout
         
         // Verificar se todos os elementos foram encontrados
         if (!video || !playPause || !player) {
@@ -62,12 +79,21 @@
     // Função para buscar vídeos do Supabase
     async function fetchVideosFromSupabase() {
         try {
+            // Obter token de autenticação
+            let authToken = SUPABASE_ANON_KEY;
+            if (supabaseClient) {
+                const { data: { session } } = await supabaseClient.auth.getSession();
+                if (session) {
+                    authToken = session.access_token;
+                }
+            }
+            
             const response = await fetch(
                 `${SUPABASE_URL}/rest/v1/videos?select=*&order=order_index.asc`,
                 {
                     headers: {
                         'apikey': SUPABASE_ANON_KEY,
-                        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+                        'Authorization': `Bearer ${authToken}`,
                         'Content-Type': 'application/json'
                     }
                 }
@@ -97,12 +123,49 @@
 
     // Carregar vídeos do Supabase ao iniciar
     async function loadVideosFromDatabase() {
+        // Salvar estado atual antes de recarregar
+        const previousVideoId = videoList.length > 0 && currentVideoIndex >= 0 && currentVideoIndex < videoList.length 
+            ? videoList[currentVideoIndex]?.id 
+            : null;
+        const previousUrl = video && video.src ? video.src : null;
+        const wasPlaying = video && !video.paused;
+        const currentTime = video ? video.currentTime : 0;
+        
         videoList = await fetchVideosFromSupabase();
+        
         if (videoList.length > 0) {
             updateQueueDisplay();
             updateQueueCount();
-            loadVideo(0);
-            updateVideoTitle();
+            
+            // Tentar manter o vídeo atual se ainda existir
+            if (previousVideoId && previousUrl) {
+                const sameVideoIndex = videoList.findIndex(v => v.id === previousVideoId);
+                if (sameVideoIndex >= 0) {
+                    currentVideoIndex = sameVideoIndex;
+                    // Se o vídeo já está carregado e é o mesmo, apenas atualizar display
+                    if (video.src === previousUrl || video.src === videoList[sameVideoIndex].url) {
+                        updateVideoTitle();
+                        // Restaurar tempo se necessário (com margem de erro de 2 segundos)
+                        if (currentTime > 0 && Math.abs(video.currentTime - currentTime) > 2) {
+                            video.currentTime = currentTime;
+                        }
+                        // Restaurar estado de play se estava tocando
+                        if (wasPlaying && video.paused) {
+                            video.play().catch(() => {});
+                        }
+                        return; // Não recarregar o vídeo
+                    } else {
+                        // URL mudou, carregar novo vídeo
+                        loadVideo(sameVideoIndex);
+                    }
+                } else {
+                    // Vídeo anterior não existe mais, carregar primeiro
+                    loadVideo(0);
+                }
+            } else {
+                // Primeira vez carregando ou não havia vídeo anterior
+                loadVideo(0);
+            }
         } else {
             console.warn('Nenhum vídeo encontrado no banco de dados');
             document.title = "V.P. Player";
@@ -234,22 +297,66 @@
         
         controls.classList.remove("hidden");
         videoTitle.classList.remove("hidden");
-        // Botão agora está na barra de controles, não precisa esconder/mostrar separadamente
+        // Mostrar botão de logout com opacidade reduzida
+        if (logoutBtn && logoutBtn.style.display !== "none") {
+            logoutBtn.classList.remove("hidden");
+        }
+        // Mostrar cursor
+        if (player) {
+            player.classList.remove("cursor-hidden");
+        }
         clearTimeout(controlsTimeout);
-        controlsTimeout = setTimeout(() => {
-            controls.classList.add("hidden");
-            videoTitle.classList.add("hidden");
-        }, 2000);
+        // Não iniciar timeout se o mouse estiver sobre os controles ou botão de logout
+        if (!isMouseOverControls()) {
+            controlsTimeout = setTimeout(() => {
+                hideControls();
+            }, 2000);
+        }
     }
 
     function hideControls() {
         if (!controls || !videoTitle) return;
         
+        // Não esconder se o mouse estiver sobre os controles ou botão de logout
+        if (isMouseOverControls()) {
+            return;
+        }
+        
         clearTimeout(controlsTimeout);
         controlsTimeout = setTimeout(() => {
-            controls.classList.add("hidden");
-            videoTitle.classList.add("hidden");
+            // Verificar novamente antes de esconder
+            if (!isMouseOverControls()) {
+                controls.classList.add("hidden");
+                videoTitle.classList.add("hidden");
+                // Esconder botão de logout junto com os controles
+                if (logoutBtn && logoutBtn.style.display !== "none") {
+                    logoutBtn.classList.add("hidden");
+                }
+                // Esconder cursor
+                if (player) {
+                    player.classList.add("cursor-hidden");
+                }
+            }
         }, 2000);
+    }
+    
+    // Verificar se o mouse está sobre os controles ou botão de logout
+    function isMouseOverControls() {
+        // Verificar se existe um elemento com mouse sobre ele
+        const hoveredElement = document.querySelector(':hover');
+        if (!hoveredElement) return false;
+        
+        // Verificar se está sobre a barra de controles
+        if (hoveredElement.closest('.controls') || hoveredElement.closest('.controls-row')) {
+            return true;
+        }
+        
+        // Verificar se está sobre o botão de logout
+        if (hoveredElement.closest('.logout-btn')) {
+            return true;
+        }
+        
+        return false;
     }
 
     function updateVolumeProgress() {
@@ -257,10 +364,36 @@
         const percent = volume.value * 100;
         volume.style.setProperty("--volume-percent", percent + "%");
     }
+    
+    // Verificar se o mouse está sobre os controles ou botão de logout
+    function isMouseOverControls() {
+        // Verificar se existe um elemento com mouse sobre ele
+        const hoveredElement = document.querySelector(':hover');
+        if (!hoveredElement) return false;
+        
+        // Verificar se está sobre a barra de controles
+        if (hoveredElement.closest('.controls') || hoveredElement.closest('.controls-row')) {
+            return true;
+        }
+        
+        // Verificar se está sobre o botão de logout
+        if (hoveredElement.closest('.logout-btn')) {
+            return true;
+        }
+        
+        return false;
+    }
 
     // Inicializar eventos e controles
     function initEventListeners() {
         if (!video || !playPause || !player) return;
+        
+        // Event listener para botão de logout
+        if (logoutBtn) {
+            logoutBtn.addEventListener("click", async () => {
+                await handleLogout();
+            });
+        }
 
 playPause.onclick = () => {
     if (video.paused) {
@@ -472,12 +605,46 @@ fullscreen.onclick = () => {
             player.addEventListener("mouseenter", () => {
                 showControls();
             });
+            
+            // Mostrar controles ao passar mouse no botão de logout
+            if (logoutBtn) {
+                logoutBtn.addEventListener("mouseenter", () => {
+                    showControls();
+                });
+                
+                logoutBtn.addEventListener("mouseleave", () => {
+                    // Só esconder se não estiver sobre os controles
+                    setTimeout(() => {
+                        if (!isMouseOverControls()) {
+                            hideControls();
+                        }
+                    }, 100);
+                });
+            }
+            
+            // Manter controles visíveis quando mouse está sobre a barra de controles
+            if (controls) {
+                controls.addEventListener("mouseenter", () => {
+                    showControls();
+                });
+                
+                controls.addEventListener("mouseleave", () => {
+                    // Só esconder se não estiver sobre o botão de logout
+                    setTimeout(() => {
+                        if (!isMouseOverControls()) {
+                            hideControls();
+                        }
+                    }, 100);
+                });
+            }
 
         player.addEventListener("mouseleave", (e) => {
             const relatedTarget = e.relatedTarget;
-            if (!relatedTarget || (!relatedTarget.closest(".queue-menu") && !relatedTarget.closest(".queue-toggle-btn") && !relatedTarget.closest(".controls-row"))) {
-                hideControls();
+            // Não esconder se o mouse estiver indo para os controles ou botão de logout
+            if (relatedTarget && (relatedTarget.closest(".queue-menu") || relatedTarget.closest(".queue-toggle-btn") || relatedTarget.closest(".controls-row") || relatedTarget.closest(".logout-btn") || relatedTarget.closest(".controls"))) {
+                return;
             }
+            hideControls();
         });
 
             player.addEventListener("mousemove", () => {
@@ -862,9 +1029,10 @@ fullscreen.onclick = () => {
             uploadForm.addEventListener("submit", async (e) => {
                 e.preventDefault();
 
+                // Verificar autenticação
                 if (!supabaseClient) {
                     if (typeof supabase !== 'undefined') {
-                        supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+                        initSupabase();
                     } else {
                         if (uploadMessage) {
                             uploadMessage.textContent = "Erro: Supabase não está disponível. Recarregue a página.";
@@ -873,6 +1041,19 @@ fullscreen.onclick = () => {
                         }
                         return;
                     }
+                }
+                
+                // Verificar se usuário está autenticado
+                const { data: { session } } = await supabaseClient.auth.getSession();
+                if (!session) {
+                    if (uploadMessage) {
+                        uploadMessage.textContent = "Erro: Você precisa estar logado para fazer upload de vídeos.";
+                        uploadMessage.className = "upload-message error";
+                        uploadMessage.style.display = "block";
+                    }
+                    closeUploadModal();
+                    showAuthModal();
+                    return;
                 }
 
                 if (videoTitleInput && !videoTitleInput.value.trim()) {
@@ -1124,28 +1305,320 @@ fullscreen.onclick = () => {
         }
     }
 
+    // ========== FUNÇÕES DE AUTENTICAÇÃO ==========
+    
+    // Verificar se usuário está autenticado
+    async function checkAuth() {
+        if (!supabaseClient) {
+            if (!initSupabase()) {
+                console.error('Supabase não inicializado');
+                return false;
+            }
+        }
+        
+        const { data: { session }, error } = await supabaseClient.auth.getSession();
+        if (error) {
+            console.error('Erro ao verificar sessão:', error);
+            return false;
+        }
+        
+        if (session) {
+            // Usuário autenticado
+            hideAuthModal();
+            return true;
+        } else {
+            // Usuário não autenticado
+            showAuthModal();
+            return false;
+        }
+    }
+    
+    // Mostrar modal de autenticação
+    function showAuthModal() {
+        if (authModal) {
+            authModal.classList.add("active");
+            document.body.style.overflow = "hidden";
+        }
+        // Esconder botão de logout quando não autenticado
+        if (logoutBtn) {
+            logoutBtn.style.display = "none";
+            logoutBtn.classList.add("hidden");
+        }
+    }
+    
+    // Esconder modal de autenticação
+    function hideAuthModal() {
+        if (authModal) {
+            authModal.classList.remove("active");
+            document.body.style.overflow = "";
+        }
+        // Mostrar botão de logout quando autenticado
+        if (logoutBtn) {
+            logoutBtn.style.display = "flex";
+            logoutBtn.classList.remove("hidden");
+        }
+    }
+    
+    // Mostrar erro no formulário
+    function showAuthError(formId, message) {
+        const errorEl = document.getElementById(formId + "Error");
+        if (errorEl) {
+            errorEl.textContent = message;
+            errorEl.style.display = "block";
+            setTimeout(() => {
+                errorEl.style.display = "none";
+            }, 5000);
+        }
+    }
+    
+    // Login
+    async function handleLogin(email, password) {
+        if (!supabaseClient) {
+            showAuthError("login", "Erro: Supabase não inicializado");
+            return false;
+        }
+        
+        const { data, error } = await supabaseClient.auth.signInWithPassword({
+            email: email,
+            password: password
+        });
+        
+        if (error) {
+            showAuthError("login", "Erro: " + error.message);
+            return false;
+        }
+        
+        // Login bem-sucedido
+        hideAuthModal();
+        loadVideosFromDatabase();
+        return true;
+    }
+    
+    // Registro
+    async function handleRegister(email, password, confirmPassword) {
+        if (password !== confirmPassword) {
+            showAuthError("register", "As senhas não coincidem!");
+            return false;
+        }
+        
+        if (password.length < 8) {
+            showAuthError("register", "A senha deve ter no mínimo 8 caracteres!");
+            return false;
+        }
+        
+        if (!supabaseClient) {
+            showAuthError("register", "Erro: Supabase não inicializado");
+            return false;
+        }
+        
+        const { data, error } = await supabaseClient.auth.signUp({
+            email: email,
+            password: password
+        });
+        
+        if (error) {
+            showAuthError("register", "Erro: " + error.message);
+            return false;
+        }
+        
+        // Registro bem-sucedido
+        showAuthError("register", "Registro realizado! Verifique seu email para confirmar a conta.");
+        
+        // Trocar para aba de login após 2 segundos
+        setTimeout(() => {
+            switchAuthTab("login");
+        }, 2000);
+        
+        return true;
+    }
+    
+    // Logout
+    async function handleLogout() {
+        if (!supabaseClient) return;
+        
+        await supabaseClient.auth.signOut();
+        showAuthModal();
+        videoList = [];
+        currentVideoIndex = 0;
+        if (video) {
+            video.src = "";
+        }
+        if (queueList) {
+            queueList.innerHTML = "";
+        }
+        if (videoTitle) {
+            videoTitle.textContent = "";
+        }
+        document.title = "V.P. Player";
+    }
+    
+    // Trocar entre tabs de login/registro
+    function switchAuthTab(tab) {
+        if (!authTabs || !loginForm || !registerForm) return;
+        
+        authTabs.forEach(t => {
+            if (t.dataset.tab === tab) {
+                t.classList.add("active");
+            } else {
+                t.classList.remove("active");
+            }
+        });
+        
+        if (tab === "login") {
+            loginForm.classList.add("active");
+            registerForm.classList.remove("active");
+        } else {
+            loginForm.classList.remove("active");
+            registerForm.classList.add("active");
+        }
+    }
+    
+    // Inicializar event listeners de autenticação
+    function initAuth() {
+        // Tabs
+        if (authTabs) {
+            authTabs.forEach(tab => {
+                tab.addEventListener("click", () => {
+                    switchAuthTab(tab.dataset.tab);
+                });
+            });
+        }
+        
+        // Fechar modal
+        if (authClose) {
+            authClose.addEventListener("click", () => {
+                // Não permitir fechar se não estiver autenticado
+                checkAuth();
+            });
+        }
+        
+        // Formulário de login
+        if (loginForm) {
+            loginForm.addEventListener("submit", async (e) => {
+                e.preventDefault();
+                const email = document.getElementById("loginEmail").value;
+                const password = document.getElementById("loginPassword").value;
+                await handleLogin(email, password);
+            });
+        }
+        
+        // Formulário de registro
+        if (registerForm) {
+            registerForm.addEventListener("submit", async (e) => {
+                e.preventDefault();
+                const email = document.getElementById("registerEmail").value;
+                const password = document.getElementById("registerPassword").value;
+                const confirmPassword = document.getElementById("registerPasswordConfirm").value;
+                await handleRegister(email, password, confirmPassword);
+            });
+        }
+        
+        // Escutar mudanças de autenticação
+        if (supabaseClient) {
+            let isInitialAuthCheck = true;
+            supabaseClient.auth.onAuthStateChange((event, session) => {
+                // Ignorar eventos durante o carregamento inicial
+                if (isInitialAuthCheck && event === 'SIGNED_IN') {
+                    isInitialAuthCheck = false;
+                    return;
+                }
+                
+                if (event === 'SIGNED_OUT') {
+                    showAuthModal();
+                } else if (event === 'SIGNED_IN') {
+                    hideAuthModal();
+                    // Só recarregar se realmente houver mudança de estado (não apenas ao voltar à aba)
+                    if (!isInitialAuthCheck) {
+                        loadVideosFromDatabase();
+                    }
+                }
+                isInitialAuthCheck = false;
+            });
+        }
+    }
+
+    // Gerenciar visibilidade da aba para preservar estado do vídeo
+    function initVisibilityHandlers() {
+        // Salvar estado do vídeo quando a aba perde foco
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) {
+                // Aba perdeu foco - salvar estado no localStorage
+                if (video && videoList.length > 0 && currentVideoIndex >= 0 && currentVideoIndex < videoList.length) {
+                    const videoState = {
+                        videoId: videoList[currentVideoIndex].id,
+                        currentTime: video.currentTime,
+                        isPlaying: !video.paused,
+                        volume: video.volume,
+                        timestamp: Date.now()
+                    };
+                    localStorage.setItem('vpPlayerState', JSON.stringify(videoState));
+                }
+            } else {
+                // Aba voltou ao foco - restaurar estado se necessário
+                const savedState = localStorage.getItem('vpPlayerState');
+                if (savedState && video && videoList.length > 0) {
+                    try {
+                        const state = JSON.parse(savedState);
+                        // Só restaurar se o estado foi salvo há menos de 10 minutos
+                        if (Date.now() - state.timestamp < 600000) {
+                            const videoIndex = videoList.findIndex(v => v.id === state.videoId);
+                            
+                            if (videoIndex >= 0 && videoIndex === currentVideoIndex) {
+                                // Mesmo vídeo, restaurar tempo e estado
+                                if (state.currentTime > 0 && Math.abs(video.currentTime - state.currentTime) > 1) {
+                                    video.currentTime = state.currentTime;
+                                }
+                                if (state.isPlaying && video.paused) {
+                                    video.play().catch(() => {});
+                                }
+                                if (state.volume !== undefined && Math.abs(state.volume - video.volume) > 0.01) {
+                                    video.volume = state.volume;
+                                    if (volume) volume.value = state.volume;
+                                }
+                            }
+                        }
+                    } catch (e) {
+                        console.error('Erro ao restaurar estado:', e);
+                    }
+                }
+            }
+        });
+    }
+
     // Função principal de inicialização
-    function init() {
+    async function init() {
         if (!initDOMElements()) {
             console.error('Falha ao inicializar elementos do DOM');
             return;
+        }
+        
+        // Inicializar Supabase
+        if (typeof supabase !== 'undefined') {
+            initSupabase();
         }
         
         initEventListeners();
         initKeyboardShortcuts(); // Inicializar atalhos de teclado
         initUpload();
         initStats(); // Inicializar dashboard
+        initAuth(); // Inicializar autenticação
+        initVisibilityHandlers(); // Gerenciar visibilidade da aba
         
-        // Aguardar Supabase estar disponível antes de carregar vídeos
-        function waitForSupabase() {
-            if (typeof supabase !== 'undefined') {
-                loadVideosFromDatabase();
-            } else {
-                setTimeout(waitForSupabase, 100);
+        // Verificar autenticação antes de carregar vídeos
+        const isAuthenticated = await checkAuth();
+        
+        if (isAuthenticated) {
+            // Aguardar Supabase estar disponível antes de carregar vídeos
+            function waitForSupabase() {
+                if (typeof supabase !== 'undefined' && supabaseClient) {
+                    loadVideosFromDatabase();
+                } else {
+                    setTimeout(waitForSupabase, 100);
+                }
             }
+            
+            waitForSupabase();
         }
-        
-        waitForSupabase();
     }
 
     // Inicializar quando o DOM estiver pronto

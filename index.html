@@ -17,6 +17,11 @@
         <video id="video"></video>
 
         <div class="video-title" id="videoTitle"></div>
+        
+        <!-- Botão de Logout -->
+        <button class="logout-btn" id="logoutBtn" title="Sair">
+            <img src="logoutIcon.png" alt="Logout" />
+        </button>
 
         <!-- Loader estilo Netflix -->
         <div class="video-loader" id="videoLoader">
@@ -177,6 +182,48 @@
         </div>
     </div>
 
+    <!-- Modal de Autenticação -->
+    <div class="auth-modal" id="authModal">
+        <div class="auth-modal-content">
+            <button class="auth-close" id="authClose">×</button>
+            <div class="auth-header">
+                <h2>V.P. Player</h2>
+                <p>Entre para acessar seus vídeos</p>
+            </div>
+            
+            <div class="auth-tabs">
+                <button class="auth-tab active" data-tab="login">Entrar</button>
+                <button class="auth-tab" data-tab="register">Registrar</button>
+            </div>
+            
+            <!-- Formulário de Login -->
+            <form id="loginForm" class="auth-form active">
+                <div class="auth-form-group">
+                    <input type="email" id="loginEmail" placeholder="Email" required autocomplete="email">
+                </div>
+                <div class="auth-form-group">
+                    <input type="password" id="loginPassword" placeholder="Senha" required autocomplete="current-password">
+                </div>
+                <div class="auth-error" id="loginError"></div>
+                <button type="submit" class="auth-submit-btn">Entrar</button>
+            </form>
+            
+            <!-- Formulário de Registro -->
+            <form id="registerForm" class="auth-form">
+                <div class="auth-form-group">
+                    <input type="email" id="registerEmail" placeholder="Email" required autocomplete="email">
+                </div>
+                <div class="auth-form-group">
+                    <input type="password" id="registerPassword" placeholder="Senha (mín. 8 caracteres)" required autocomplete="new-password" minlength="8">
+                </div>
+                <div class="auth-form-group">
+                    <input type="password" id="registerPasswordConfirm" placeholder="Confirmar Senha" required autocomplete="new-password" minlength="8">
+                </div>
+                <div class="auth-error" id="registerError"></div>
+                <button type="submit" class="auth-submit-btn">Registrar</button>
+            </form>
+        </div>
+    </div>
 
     <script src="script.js"></script>
 </body>
