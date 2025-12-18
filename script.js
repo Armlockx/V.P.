@@ -19,6 +19,14 @@
     let supabaseClient = null;
     let isLoading = false;
     let isSeeking = false;
+    let videoStatsTracking = {
+        currentVideoId: null,
+        startTime: null,
+        lastUpdateTime: null,
+        totalWatchTime: 0,
+        viewIncremented: false,
+        updateInterval: null
+    };
     
     // Configuração do Supabase
     const SUPABASE_URL = 'https://esvjyjnyrmysvylnszjd.supabase.co';
@@ -111,8 +119,6 @@
                 thumbnail: video.thumbnail,
                 duration: video.duration,
                 views: video.views || 0,
-                watch_time: video.watch_time || 0,
-                views: video.views || 0,
                 watch_time: video.watch_time || 0
             }));
         } catch (error) {
@@ -182,8 +188,14 @@
     function loadVideo(index) {
         if (index < 0 || index >= videoList.length) return;
         
+        // Parar rastreamento do vídeo anterior
+        stopVideoStatsTracking();
+        
         currentVideoIndex = index;
         const selectedVideo = videoList[index];
+        
+        // Resetar estado de rastreamento para o novo vídeo
+        videoStatsTracking.viewIncremented = false;
         
         // Mostrar loader
         showLoader("🕐");
@@ -243,15 +255,27 @@
                 listItem.classList.add("active");
             }
             
-            const thumbnailHtml = videoItem.thumbnail 
-                ? `<img src="${videoItem.thumbnail}" alt="${videoItem.title}" onerror="this.onerror=null; this.style.display='none'; this.parentElement.innerHTML='🎬';" />`
-                : '🎬';
+            // Formatar views
+            const views = videoItem.views || 0;
+            const viewsText = views === 0 ? '0 views' : views === 1 ? '1 view' : `${views.toLocaleString()} views`;
+            
+            // Criar HTML da thumbnail com tempo no canto inferior direito
+            let thumbnailHtml;
+            const duration = videoItem.duration || '0:00';
+            if (videoItem.thumbnail) {
+                thumbnailHtml = `
+                    <img src="${videoItem.thumbnail}" alt="${videoItem.title}" onerror="this.onerror=null; this.style.display='none'; this.parentElement.querySelector('.thumbnail-duration')?.remove(); this.parentElement.innerHTML='🎬';" />
+                    <div class="thumbnail-duration">${duration}</div>
+                `;
+            } else {
+                thumbnailHtml = '🎬';
+            }
             
             listItem.innerHTML = `
                 <div class="queue-item-thumbnail">${thumbnailHtml}</div>
                 <div class="queue-item-info">
                     <div class="queue-item-title">${videoItem.title}</div>
-                    <div class="queue-item-duration">${videoItem.duration}</div>
+                    <div class="queue-item-duration">${viewsText}</div>
                 </div>
             `;
             
@@ -489,12 +513,12 @@ progressContainer.onclick = (e) => {
     const width = progressContainer.clientWidth;
     const clickX = e.offsetX;
                 const newTime = (clickX / width) * video.duration;
-                
+
                 // Mostrar loader ao fazer seek
                 if (Math.abs(video.currentTime - newTime) > 1) {
                     showLoader("🔎");
                 }
-                
+
                 video.currentTime = newTime;
             };
         }
@@ -525,6 +549,9 @@ fullscreen.onclick = () => {
         });
 
         video.onended = () => {
+            // Parar rastreamento do vídeo atual
+            stopVideoStatsTracking();
+            
             if (currentVideoIndex < videoList.length - 1) {
                 // Mostrar loader ao passar para próximo vídeo
                 showLoader("Próximo vídeo...");
@@ -714,11 +741,55 @@ fullscreen.onclick = () => {
         }
 
         video.addEventListener("play", () => {
+            console.log('Evento play disparado');
             hideControls();
+            
+            // Incrementar views na primeira vez que o vídeo toca
+            if (videoList.length > 0 && currentVideoIndex >= 0 && currentVideoIndex < videoList.length) {
+                const currentVideo = videoList[currentVideoIndex];
+                console.log('Vídeo atual:', currentVideo);
+                if (currentVideo) {
+                    // Incrementar views apenas na primeira vez
+                    if (!videoStatsTracking.viewIncremented) {
+                        console.log('Incrementando views para vídeo:', currentVideo.id, currentVideo.title);
+                        incrementVideoViews(currentVideo.id);
+                        videoStatsTracking.viewIncremented = true;
+                    } else {
+                        console.log('Views já incrementadas para este vídeo');
+                    }
+                    
+                    // Iniciar/retomar rastreamento de tempo assistido
+                    // Se já está rastreando o mesmo vídeo, apenas atualiza o lastUpdateTime
+                    if (videoStatsTracking.currentVideoId === currentVideo.id) {
+                        console.log('Retomando rastreamento para vídeo:', currentVideo.id);
+                        videoStatsTracking.lastUpdateTime = Date.now();
+                    } else {
+                        console.log('Iniciando novo rastreamento para vídeo:', currentVideo.id);
+                        startVideoStatsTracking(currentVideo.id);
+                    }
+                } else {
+                    console.warn('currentVideo não encontrado');
+                }
+            } else {
+                console.warn('videoList vazio ou currentVideoIndex inválido', {
+                    videoListLength: videoList.length,
+                    currentVideoIndex: currentVideoIndex
+                });
+            }
         });
 
         video.addEventListener("pause", () => {
             showControls();
+            
+            // Salvar tempo assistido quando pausar
+            if (videoStatsTracking.currentVideoId && video) {
+                const now = Date.now();
+                const elapsedSeconds = (now - videoStatsTracking.lastUpdateTime) / 1000;
+                if (elapsedSeconds > 0) {
+                    updateVideoWatchTime(videoStatsTracking.currentVideoId, elapsedSeconds);
+                    videoStatsTracking.lastUpdateTime = now;
+                }
+            }
         });
 
         showControls();
@@ -1205,6 +1276,352 @@ fullscreen.onclick = () => {
         }
     }
 
+    // ========== FUNÇÕES DE ESTATÍSTICAS ==========
+    
+    // Atualizar views no Supabase
+    async function incrementVideoViews(videoId) {
+        try {
+            if (!videoId) {
+                console.warn('incrementVideoViews: videoId não fornecido');
+                return;
+            }
+            
+            if (!supabaseClient) {
+                console.warn('incrementVideoViews: supabaseClient não inicializado');
+                return;
+            }
+            
+            // Buscar views atuais
+            const currentVideo = videoList.find(v => v.id === videoId);
+            if (!currentVideo) {
+                console.warn('incrementVideoViews: vídeo não encontrado no videoList', videoId);
+                return;
+            }
+            
+            const newViews = (currentVideo.views || 0) + 1;
+            console.log(`Incrementando views para vídeo ${videoId}: ${currentVideo.views || 0} -> ${newViews}`);
+            
+            // Tentar atualizar usando incremento SQL via RPC primeiro (se disponível)
+            // Se não funcionar, usar update normal
+            let updateSuccess = false;
+            
+            // Tentar usar RPC para incremento atômico (mais seguro)
+            // Só tenta se a função existir (evita 404)
+            try {
+                const { data: rpcData, error: rpcError } = await supabaseClient.rpc('increment_video_views', {
+                    video_id: videoId
+                });
+                
+                if (rpcError) {
+                    // Se for 404, a função não existe - não tentar novamente
+                    if (rpcError.code === 'P0001' || rpcError.message?.includes('404') || rpcError.message?.includes('function') || rpcError.message?.includes('does not exist')) {
+                        console.log('Função RPC não disponível, usando update normal');
+                    } else {
+                        console.warn('Erro ao chamar RPC:', rpcError);
+                    }
+                } else if (rpcData !== null) {
+                    currentVideo.views = newViews;
+                    console.log('Views incrementadas via RPC:', rpcData);
+                    updateSuccess = true;
+                }
+            } catch (rpcErr) {
+                // RPC não disponível, continuar com update normal
+                if (rpcErr.message?.includes('404') || rpcErr.message?.includes('function')) {
+                    // Função não existe, não logar como erro
+                } else {
+                    console.log('RPC não disponível, usando update normal');
+                }
+            }
+            
+            // Se RPC não funcionou, usar update normal
+            if (!updateSuccess) {
+                const { data, error } = await supabaseClient
+                    .from('videos')
+                    .update({ views: newViews })
+                    .eq('id', videoId)
+                    .select('*');
+                
+                if (error) {
+                    console.error('Erro ao atualizar views no Supabase:', error);
+                    updateSuccess = false;
+                } else if (!data || data.length === 0) {
+                    // Data vazio significa que RLS bloqueou ou registro não encontrado
+                    console.warn('Update de views retornou array vazio - possível problema de RLS');
+                    
+                    // Tentar verificar se o registro existe e se temos permissão de leitura
+                    const { data: checkData, error: checkError } = await supabaseClient
+                        .from('videos')
+                        .select('id, views')
+                        .eq('id', videoId)
+                        .single();
+                    
+                    if (checkError) {
+                        console.error('Erro ao verificar registro:', checkError);
+                    } else if (checkData) {
+                        console.log('Registro existe e pode ser lido. Views atuais:', checkData.views);
+                        console.warn('RLS está bloqueando UPDATE mas permite SELECT. Execute o script supabase_functions.sql no Supabase SQL Editor.');
+                    }
+                    
+                    updateSuccess = false;
+                } else {
+                    currentVideo.views = newViews;
+                    console.log('Views atualizadas com sucesso:', data);
+                    updateSuccess = true;
+                }
+            }
+            
+            // Se ainda não funcionou, tentar com fetch como fallback
+            if (!updateSuccess) {
+                try {
+                    const { data: { session } } = await supabaseClient.auth.getSession();
+                    const authToken = session ? session.access_token : SUPABASE_ANON_KEY;
+                    
+                    const response = await fetch(
+                        `${SUPABASE_URL}/rest/v1/videos?id=eq.${videoId}`,
+                        {
+                            method: 'PATCH',
+                            headers: {
+                                'apikey': SUPABASE_ANON_KEY,
+                                'Authorization': `Bearer ${authToken}`,
+                                'Content-Type': 'application/json',
+                                'Prefer': 'return=representation'
+                            },
+                            body: JSON.stringify({ views: newViews })
+                        }
+                    );
+                    
+                    let responseData;
+                    try {
+                        responseData = await response.json();
+                    } catch (e) {
+                        responseData = await response.text();
+                    }
+                    
+                    if (response.ok) {
+                        if (responseData && Array.isArray(responseData) && responseData.length > 0) {
+                            currentVideo.views = newViews;
+                            console.log('Views atualizadas via fetch fallback:', responseData);
+                            updateSuccess = true;
+                        } else {
+                            // Status 200 mas array vazio = RLS bloqueou
+                            console.error('RLS bloqueou UPDATE via fetch. Status 200 mas resposta vazia. Execute o script supabase_functions.sql no Supabase SQL Editor para ajustar as políticas RLS.');
+                        }
+                    } else {
+                        const errorText = responseData ? (typeof responseData === 'string' ? responseData : JSON.stringify(responseData)) : 'Sem resposta';
+                        console.error('Erro ao atualizar views via fetch. Status:', response.status, 'Response:', errorText);
+                    }
+                } catch (fetchError) {
+                    console.error('Erro no fallback fetch:', fetchError);
+                }
+            }
+        } catch (error) {
+            console.error('Erro ao incrementar views:', error);
+        }
+    }
+    
+    // Atualizar tempo de visualização no Supabase
+    async function updateVideoWatchTime(videoId, additionalSeconds) {
+        try {
+            if (!videoId) {
+                console.warn('updateVideoWatchTime: videoId não fornecido');
+                return;
+            }
+            
+            if (!supabaseClient) {
+                console.warn('updateVideoWatchTime: supabaseClient não inicializado');
+                return;
+            }
+            
+            if (additionalSeconds <= 0) {
+                return;
+            }
+            
+            // Buscar watch_time atual
+            const currentVideo = videoList.find(v => v.id === videoId);
+            if (!currentVideo) {
+                console.warn('updateVideoWatchTime: vídeo não encontrado no videoList', videoId);
+                return;
+            }
+            
+            const oldWatchTime = parseFloat(currentVideo.watch_time || 0);
+            const additionalSecondsNum = parseFloat(additionalSeconds);
+            const newWatchTime = oldWatchTime + additionalSecondsNum;
+            console.log(`Atualizando watch_time para vídeo ${videoId}: ${oldWatchTime}s -> ${newWatchTime}s (+${additionalSecondsNum}s)`);
+            
+            // Tentar atualizar usando incremento SQL via RPC primeiro (se disponível)
+            let updateSuccess = false;
+            
+            // Tentar usar RPC para incremento atômico (mais seguro)
+            // Só tenta se a função existir (evita 404)
+            try {
+                const { data: rpcData, error: rpcError } = await supabaseClient.rpc('increment_video_watch_time', {
+                    video_id: videoId,
+                    seconds: additionalSecondsNum
+                });
+                
+                if (rpcError) {
+                    // Se for 404, a função não existe - não tentar novamente
+                    if (rpcError.code === 'P0001' || rpcError.message?.includes('404') || rpcError.message?.includes('function') || rpcError.message?.includes('does not exist')) {
+                        console.log('Função RPC não disponível, usando update normal');
+                    } else {
+                        console.warn('Erro ao chamar RPC:', rpcError);
+                    }
+                } else if (rpcData !== null) {
+                    currentVideo.watch_time = newWatchTime;
+                    console.log('Watch_time incrementado via RPC:', rpcData);
+                    updateSuccess = true;
+                }
+            } catch (rpcErr) {
+                // RPC não disponível, continuar com update normal
+                if (rpcErr.message?.includes('404') || rpcErr.message?.includes('function')) {
+                    // Função não existe, não logar como erro
+                } else {
+                    console.log('RPC não disponível, usando update normal');
+                }
+            }
+            
+            // Se RPC não funcionou, usar update normal
+            if (!updateSuccess) {
+                const { data, error } = await supabaseClient
+                    .from('videos')
+                    .update({ watch_time: parseFloat(newWatchTime) })
+                    .eq('id', videoId)
+                    .select('*');
+                
+                if (error) {
+                    console.error('Erro ao atualizar watch_time no Supabase:', error);
+                    updateSuccess = false;
+                } else if (!data || data.length === 0) {
+                    // Data vazio significa que RLS bloqueou ou registro não encontrado
+                    console.warn('Update de watch_time retornou array vazio - possível problema de RLS');
+                    
+                    // Tentar verificar se o registro existe e se temos permissão de leitura
+                    const { data: checkData, error: checkError } = await supabaseClient
+                        .from('videos')
+                        .select('id, watch_time')
+                        .eq('id', videoId)
+                        .single();
+                    
+                    if (checkError) {
+                        console.error('Erro ao verificar registro:', checkError);
+                    } else if (checkData) {
+                        console.log('Registro existe e pode ser lido. Watch_time atual:', checkData.watch_time);
+                        console.warn('RLS está bloqueando UPDATE mas permite SELECT. Execute o script supabase_functions.sql no Supabase SQL Editor.');
+                    }
+                    
+                    updateSuccess = false;
+                } else {
+                    currentVideo.watch_time = newWatchTime;
+                    console.log('Watch_time atualizado com sucesso:', data);
+                    updateSuccess = true;
+                }
+            }
+            
+            // Se ainda não funcionou, tentar com fetch como fallback
+            if (!updateSuccess) {
+                try {
+                    const { data: { session } } = await supabaseClient.auth.getSession();
+                    const authToken = session ? session.access_token : SUPABASE_ANON_KEY;
+                    
+                    const response = await fetch(
+                        `${SUPABASE_URL}/rest/v1/videos?id=eq.${videoId}`,
+                        {
+                            method: 'PATCH',
+                            headers: {
+                                'apikey': SUPABASE_ANON_KEY,
+                                'Authorization': `Bearer ${authToken}`,
+                                'Content-Type': 'application/json',
+                                'Prefer': 'return=representation'
+                            },
+                            body: JSON.stringify({ watch_time: parseFloat(newWatchTime) })
+                        }
+                    );
+                    
+                    let responseData;
+                    try {
+                        responseData = await response.json();
+                    } catch (e) {
+                        responseData = await response.text();
+                    }
+                    
+                    if (response.ok) {
+                        if (responseData && Array.isArray(responseData) && responseData.length > 0) {
+                            currentVideo.watch_time = newWatchTime;
+                            console.log('Watch_time atualizado via fetch fallback:', responseData);
+                            updateSuccess = true;
+                        } else {
+                            // Status 200 mas array vazio = RLS bloqueou
+                            console.error('RLS bloqueou UPDATE via fetch. Status 200 mas resposta vazia. Execute o script supabase_functions.sql no Supabase SQL Editor para ajustar as políticas RLS.');
+                        }
+                    } else {
+                        const errorText = responseData ? (typeof responseData === 'string' ? responseData : JSON.stringify(responseData)) : 'Sem resposta';
+                        console.error('Erro ao atualizar watch_time via fetch. Status:', response.status, 'Response:', errorText);
+                    }
+                } catch (fetchError) {
+                    console.error('Erro no fallback fetch:', fetchError);
+                }
+            }
+        } catch (error) {
+            console.error('Erro ao atualizar watch_time:', error);
+        }
+    }
+    
+    // Iniciar rastreamento de estatísticas para um vídeo
+    function startVideoStatsTracking(videoId) {
+        console.log('startVideoStatsTracking chamado para vídeo:', videoId);
+        // Parar rastreamento anterior se houver
+        stopVideoStatsTracking();
+        
+        if (!videoId) {
+            console.warn('startVideoStatsTracking: videoId não fornecido');
+            return;
+        }
+        
+        videoStatsTracking.currentVideoId = videoId;
+        videoStatsTracking.startTime = Date.now();
+        videoStatsTracking.lastUpdateTime = Date.now();
+        videoStatsTracking.totalWatchTime = 0;
+        // Não resetar viewIncremented aqui, pois já foi setado no evento play
+        
+        console.log('Rastreamento iniciado para vídeo:', videoId);
+        
+        // Atualizar watch_time a cada 10 segundos
+        videoStatsTracking.updateInterval = setInterval(() => {
+            if (videoStatsTracking.currentVideoId && video && !video.paused) {
+                const now = Date.now();
+                const elapsedSeconds = (now - videoStatsTracking.lastUpdateTime) / 1000;
+                
+                if (elapsedSeconds >= 10) {
+                    console.log(`Atualizando watch_time: ${elapsedSeconds.toFixed(1)}s assistidos`);
+                    updateVideoWatchTime(videoStatsTracking.currentVideoId, elapsedSeconds);
+                    videoStatsTracking.lastUpdateTime = now;
+                }
+            }
+        }, 10000); // Atualizar a cada 10 segundos
+    }
+    
+    // Parar rastreamento de estatísticas
+    function stopVideoStatsTracking() {
+        if (videoStatsTracking.updateInterval) {
+            clearInterval(videoStatsTracking.updateInterval);
+            videoStatsTracking.updateInterval = null;
+        }
+        
+        // Salvar tempo restante antes de parar
+        if (videoStatsTracking.currentVideoId && video && !video.paused) {
+            const now = Date.now();
+            const elapsedSeconds = (now - videoStatsTracking.lastUpdateTime) / 1000;
+            if (elapsedSeconds > 0) {
+                updateVideoWatchTime(videoStatsTracking.currentVideoId, elapsedSeconds);
+            }
+        }
+        
+        videoStatsTracking.currentVideoId = null;
+        videoStatsTracking.startTime = null;
+        videoStatsTracking.lastUpdateTime = null;
+        videoStatsTracking.totalWatchTime = 0;
+    }
+    
     // Inicializar dashboard de estatísticas
     function initStats() {
         if (!statsBtn || !statsModal) return;
@@ -1234,57 +1651,58 @@ fullscreen.onclick = () => {
     // Carregar e exibir estatísticas
     async function loadStatistics() {
         try {
-            const totalVideos = videoList.length;
-            const totalViews = videoList.reduce((sum, v) => sum + (v.views || 0), 0);
-            const totalWatchTime = videoList.reduce((sum, v) => sum + (v.watch_time || 0), 0);
+            // Verificar se há um vídeo atual
+            if (videoList.length === 0 || currentVideoIndex < 0 || currentVideoIndex >= videoList.length) {
+                console.warn('Nenhum vídeo selecionado para mostrar estatísticas');
+                return;
+            }
+            
+            const currentVideo = videoList[currentVideoIndex];
+            if (!currentVideo) {
+                console.warn('Vídeo atual não encontrado');
+                return;
+            }
+            
+            // Recarregar dados do banco para garantir que as estatísticas estejam atualizadas
+            const updatedVideos = await fetchVideosFromSupabase();
+            if (updatedVideos && updatedVideos.length > 0) {
+                // Atualizar views e watch_time do vídeo atual
+                const updatedVideo = updatedVideos.find(v => v.id === currentVideo.id);
+                if (updatedVideo) {
+                    currentVideo.views = updatedVideo.views || 0;
+                    currentVideo.watch_time = updatedVideo.watch_time || 0;
+                }
+            }
+            
+            // Estatísticas do vídeo atual
+            const videoViews = currentVideo.views || 0;
+            const videoWatchTime = parseFloat(currentVideo.watch_time || 0);
             
             // Formatar tempo assistido
-            const hours = Math.floor(totalWatchTime / 3600);
-            const minutes = Math.floor((totalWatchTime % 3600) / 60);
-            const watchTimeText = hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
+            const hours = Math.floor(videoWatchTime / 3600);
+            const minutes = Math.floor((videoWatchTime % 3600) / 60);
+            const seconds = Math.floor(videoWatchTime % 60);
+            let watchTimeText;
+            if (hours > 0) {
+                watchTimeText = `${hours}h ${minutes}m`;
+            } else if (minutes > 0) {
+                watchTimeText = `${minutes}m ${seconds}s`;
+            } else {
+                watchTimeText = `${seconds}s`;
+            }
             
-            // Atualizar estatísticas gerais
+            // Atualizar estatísticas do vídeo atual
             const totalVideosEl = document.getElementById("totalVideos");
             const totalViewsEl = document.getElementById("totalViews");
             const totalWatchTimeEl = document.getElementById("totalWatchTime");
             
-            if (totalVideosEl) totalVideosEl.textContent = totalVideos;
-            if (totalViewsEl) totalViewsEl.textContent = totalViews.toLocaleString();
-            if (totalWatchTimeEl) totalWatchTimeEl.textContent = watchTimeText;
-            
-            // Vídeos mais populares
-            const popularVideos = [...videoList]
-                .sort((a, b) => (b.views || 0) - (a.views || 0))
-                .slice(0, 5);
-            
-            const popularList = document.getElementById("popularVideos");
-            if (popularList) {
-                popularList.innerHTML = "";
-                
-                popularVideos.forEach((video, index) => {
-                    const item = document.createElement("li");
-                    item.className = "popular-video-item";
-                    item.innerHTML = `
-                        <span class="popular-rank">${index + 1}</span>
-                        <span class="popular-title">${video.title}</span>
-                        <span class="popular-views">${(video.views || 0).toLocaleString()} visualizações</span>
-                    `;
-                    item.onclick = () => {
-                        const videoIndex = videoList.findIndex(v => v.id === video.id);
-                        if (videoIndex >= 0) {
-                            loadVideo(videoIndex);
-                            closeStatsModal();
-                            // Fechar menu lateral também
-                            if (queueMenu) queueMenu.classList.remove("open");
-                            if (queueToggle) queueToggle.classList.remove("active");
-                            document.body.classList.remove("menu-open");
-                            if (uploadBtn) uploadBtn.style.display = "none";
-                            if (statsBtn) statsBtn.style.display = "none";
-                        }
-                    };
-                    popularList.appendChild(item);
-                });
+            // Mostrar título do vídeo no lugar de "Total de Vídeos"
+            if (totalVideosEl) {
+                const videoTitle = currentVideo.title || 'Vídeo sem título';
+                totalVideosEl.textContent = videoTitle.length > 30 ? videoTitle.substring(0, 30) + '...' : videoTitle;
             }
+            if (totalViewsEl) totalViewsEl.textContent = videoViews.toLocaleString();
+            if (totalWatchTimeEl) totalWatchTimeEl.textContent = watchTimeText;
         } catch (error) {
             console.error("Erro ao carregar estatísticas:", error);
         }
@@ -1565,7 +1983,9 @@ fullscreen.onclick = () => {
                             
                             if (videoIndex >= 0 && videoIndex === currentVideoIndex) {
                                 // Mesmo vídeo, restaurar tempo e estado
-                                if (state.currentTime > 0 && Math.abs(video.currentTime - state.currentTime) > 1) {
+                                // Só restaurar o tempo se o vídeo estava PAUSADO quando a aba foi escondida
+                                // Se estava tocando, o vídeo continuou avançando e já está no tempo correto
+                                if (!state.isPlaying && state.currentTime > 0 && Math.abs(video.currentTime - state.currentTime) > 1) {
                                     video.currentTime = state.currentTime;
                                 }
                                 if (state.isPlaying && video.paused) {

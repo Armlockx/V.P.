@@ -841,8 +841,8 @@ input[type="range"]:hover::-moz-range-thumb {
 }
 
 .queue-item-thumbnail {
-    width: 56px;
-    height: 36px;
+    width: 80px;
+    height: 50px;
     background: linear-gradient(135deg, rgba(255, 255, 255, 0.15), rgba(255, 255, 255, 0.05));
     border-radius: 6px;
     flex-shrink: 0;
@@ -861,6 +861,22 @@ input[type="range"]:hover::-moz-range-thumb {
     height: 100%;
     object-fit: cover;
     border-radius: 6px;
+}
+
+.thumbnail-duration {
+    position: absolute;
+    bottom: 4px;
+    right: 4px;
+    background: rgba(0, 0, 0, 0.75);
+    color: white;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-size: 11px;
+    font-weight: 500;
+    line-height: 1.4;
+    pointer-events: none;
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
 }
 
 .queue-item:hover .queue-item-thumbnail {
