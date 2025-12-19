@@ -63,6 +63,16 @@
 
                 <div class="time" id="time">0:00 / 0:00</div>
 
+                <button class="like-btn" id="likeBtn" title="Curtir">
+                    <span class="like-icon">♡</span>
+                    <span class="like-count" id="likeCount">0</span>
+                </button>
+
+                <button class="comments-btn" id="commentsBtn" title="Comentários">
+                    <span class="comments-icon">💬</span>
+                    <span class="comments-count" id="commentsCount">0</span>
+                </button>
+
                 <button class="queue-toggle-btn" id="queueToggle" title="Mostrar fila">
                     <span class="queue-icon">☰</span>
                     <span class="queue-badge" id="queueBadge">10</span>
@@ -173,6 +183,25 @@
                 <div class="stat-card">
                     <div class="stat-value" id="totalWatchTime">0s</div>
                     <div class="stat-label">Tempo Assistido</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal de Comentários -->
+    <div class="comments-modal" id="commentsModal">
+        <div class="comments-modal-content">
+            <div class="comments-modal-header">
+                <h2>Comentários</h2>
+                <button class="comments-close-btn" id="commentsCloseBtn">×</button>
+            </div>
+            <div class="comments-body">
+                <div class="comments-input-section">
+                    <textarea id="commentInput" placeholder="Escreva um comentário..." rows="3" maxlength="500"></textarea>
+                    <button class="comment-submit-btn" id="commentSubmitBtn">Comentar</button>
+                </div>
+                <div class="comments-list" id="commentsList">
+                    <!-- Comentários serão adicionados dinamicamente -->
                 </div>
             </div>
         </div>

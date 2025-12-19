@@ -12,6 +12,8 @@
     let commandNotification, notificationIcon, notificationText; // Notificação de comando
     let authModal, loginForm, registerForm, authTabs, authClose; // Elementos de autenticação
     let logoutBtn; // Botão de logout
+    let likeBtn, likeCount; // Botão de like e contador
+    let commentsBtn, commentsCount, commentsModal, commentsCloseBtn, commentsList, commentInput, commentSubmitBtn; // Elementos de comentários
     let videoList = [];
     let currentVideoIndex = 0;
     let controlsTimeout = null;
@@ -75,6 +77,15 @@
         authTabs = document.querySelectorAll(".auth-tab"); // Tabs de autenticação
         authClose = document.getElementById("authClose"); // Botão de fechar modal
         logoutBtn = document.getElementById("logoutBtn"); // Botão de logout
+        likeBtn = document.getElementById("likeBtn"); // Botão de like
+        likeCount = document.getElementById("likeCount"); // Contador de likes
+        commentsBtn = document.getElementById("commentsBtn"); // Botão de comentários
+        commentsCount = document.getElementById("commentsCount"); // Contador de comentários
+        commentsModal = document.getElementById("commentsModal"); // Modal de comentários
+        commentsCloseBtn = document.getElementById("commentsCloseBtn"); // Botão de fechar modal
+        commentsList = document.getElementById("commentsList"); // Lista de comentários
+        commentInput = document.getElementById("commentInput"); // Input de comentário
+        commentSubmitBtn = document.getElementById("commentSubmitBtn"); // Botão de enviar comentário
         
         // Verificar se todos os elementos foram encontrados
         if (!video || !playPause || !player) {
@@ -204,6 +215,12 @@
         video.load();
         updateQueueDisplay();
         updateVideoTitle();
+        
+        // Carregar likes do vídeo
+        loadVideoLikes(selectedVideo.id);
+        
+        // Carregar comentários do vídeo
+        loadVideoComments(selectedVideo.id);
         
         if (!video.paused) {
             video.play();
@@ -380,6 +397,16 @@
             return true;
         }
         
+        // Verificar se está sobre o botão de like
+        if (hoveredElement.closest('.like-btn')) {
+            return true;
+        }
+        
+        // Verificar se está sobre o botão de comentários
+        if (hoveredElement.closest('.comments-btn')) {
+            return true;
+        }
+        
         return false;
     }
 
@@ -402,6 +429,16 @@
         
         // Verificar se está sobre o botão de logout
         if (hoveredElement.closest('.logout-btn')) {
+            return true;
+        }
+        
+        // Verificar se está sobre o botão de like
+        if (hoveredElement.closest('.like-btn')) {
+            return true;
+        }
+        
+        // Verificar se está sobre o botão de comentários
+        if (hoveredElement.closest('.comments-btn')) {
             return true;
         }
         
@@ -540,6 +577,51 @@ fullscreen.onclick = () => {
         document.exitFullscreen();
     }
 };
+        }
+
+        if (likeBtn) {
+            likeBtn.onclick = (e) => {
+                e.stopPropagation();
+                toggleLike();
+            };
+        }
+
+        if (commentsBtn) {
+            commentsBtn.onclick = (e) => {
+                e.stopPropagation();
+                openCommentsModal();
+            };
+        }
+
+        if (commentsCloseBtn) {
+            commentsCloseBtn.onclick = () => {
+                closeCommentsModal();
+            };
+        }
+
+        if (commentSubmitBtn && commentInput) {
+            commentSubmitBtn.onclick = async (e) => {
+                e.preventDefault();
+                if (videoList.length > 0 && currentVideoIndex >= 0 && currentVideoIndex < videoList.length) {
+                    const currentVideo = videoList[currentVideoIndex];
+                    if (currentVideo && currentVideo.id && commentInput.value.trim()) {
+                        await addComment(currentVideo.id, commentInput.value);
+                    }
+                }
+            };
+            
+            // Permitir enviar com Enter (mas não Shift+Enter para quebrar linha)
+            commentInput.addEventListener('keydown', async (e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    if (videoList.length > 0 && currentVideoIndex >= 0 && currentVideoIndex < videoList.length) {
+                        const currentVideo = videoList[currentVideoIndex];
+                        if (currentVideo && currentVideo.id && commentInput.value.trim()) {
+                            await addComment(currentVideo.id, commentInput.value);
+                        }
+                    }
+                }
+            });
         }
 
         document.addEventListener("fullscreenchange", () => {
@@ -1723,6 +1805,359 @@ fullscreen.onclick = () => {
         }
     }
 
+    // ========== FUNÇÕES DE LIKE ==========
+    
+    // Carregar likes do vídeo atual
+    async function loadVideoLikes(videoId) {
+        try {
+            if (!videoId || !supabaseClient) {
+                if (likeCount) likeCount.textContent = '0';
+                if (likeBtn) likeBtn.classList.remove('liked');
+                return;
+            }
+            
+            // Obter sessão do usuário
+            const { data: { session } } = await supabaseClient.auth.getSession();
+            if (!session) {
+                if (likeCount) likeCount.textContent = '0';
+                if (likeBtn) likeBtn.classList.remove('liked');
+                return;
+            }
+            
+            // Buscar total de likes do vídeo
+            const { count: totalLikes, error: countError } = await supabaseClient
+                .from('video_likes')
+                .select('*', { count: 'exact', head: true })
+                .eq('video_id', videoId);
+            
+            if (countError) {
+                console.error('Erro ao buscar total de likes:', countError);
+                if (likeCount) likeCount.textContent = '0';
+            } else {
+                if (likeCount) likeCount.textContent = (totalLikes || 0).toString();
+            }
+            
+            // Verificar se o usuário atual já deu like
+            const { data: userLike, error: likeError } = await supabaseClient
+                .from('video_likes')
+                .select('id')
+                .eq('video_id', videoId)
+                .eq('user_id', session.user.id)
+                .single();
+            
+            if (likeError && likeError.code !== 'PGRST116') { // PGRST116 = nenhum resultado
+                console.error('Erro ao verificar like do usuário:', likeError);
+            } else {
+                if (likeBtn) {
+                    if (userLike) {
+                        likeBtn.classList.add('liked');
+                    } else {
+                        likeBtn.classList.remove('liked');
+                    }
+                }
+            }
+        } catch (error) {
+            console.error('Erro ao carregar likes:', error);
+            if (likeCount) likeCount.textContent = '0';
+            if (likeBtn) likeBtn.classList.remove('liked');
+        }
+    }
+    
+    // Dar ou remover like
+    async function toggleLike() {
+        try {
+            if (!supabaseClient) {
+                console.warn('Supabase não inicializado');
+                return;
+            }
+            
+            // Verificar autenticação
+            const { data: { session }, error: sessionError } = await supabaseClient.auth.getSession();
+            if (sessionError || !session) {
+                console.warn('Usuário não autenticado');
+                return;
+            }
+            
+            if (videoList.length === 0 || currentVideoIndex < 0 || currentVideoIndex >= videoList.length) {
+                console.warn('Nenhum vídeo selecionado');
+                return;
+            }
+            
+            const currentVideo = videoList[currentVideoIndex];
+            if (!currentVideo || !currentVideo.id) {
+                console.warn('Vídeo atual inválido');
+                return;
+            }
+            
+            const videoId = currentVideo.id;
+            const userId = session.user.id;
+            
+            // Verificar se já deu like
+            const { data: existingLike, error: checkError } = await supabaseClient
+                .from('video_likes')
+                .select('id')
+                .eq('video_id', videoId)
+                .eq('user_id', userId)
+                .single();
+            
+            if (checkError && checkError.code !== 'PGRST116') {
+                console.error('Erro ao verificar like:', checkError);
+                return;
+            }
+            
+            if (existingLike) {
+                // Remover like
+                const { error: deleteError } = await supabaseClient
+                    .from('video_likes')
+                    .delete()
+                    .eq('id', existingLike.id);
+                
+                if (deleteError) {
+                    console.error('Erro ao remover like:', deleteError);
+                } else {
+                    // Atualizar contador
+                    await loadVideoLikes(videoId);
+                }
+            } else {
+                // Adicionar like
+                const { error: insertError } = await supabaseClient
+                    .from('video_likes')
+                    .insert({
+                        user_id: userId,
+                        video_id: videoId
+                    });
+                
+                if (insertError) {
+                    console.error('Erro ao adicionar like:', insertError);
+                } else {
+                    // Atualizar contador
+                    await loadVideoLikes(videoId);
+                }
+            }
+        } catch (error) {
+            console.error('Erro ao alternar like:', error);
+        }
+    }
+    
+    // ========== FUNÇÕES DE COMENTÁRIOS ==========
+    
+    // Carregar comentários do vídeo atual
+    async function loadVideoComments(videoId) {
+        try {
+            if (!videoId || !supabaseClient) {
+                if (commentsCount) commentsCount.textContent = '0';
+                if (commentsList) commentsList.innerHTML = '';
+                return;
+            }
+            
+            // Obter sessão do usuário
+            const { data: { session } } = await supabaseClient.auth.getSession();
+            if (!session) {
+                if (commentsCount) commentsCount.textContent = '0';
+                if (commentsList) commentsList.innerHTML = '';
+                return;
+            }
+            
+            // Buscar comentários do vídeo
+            const { data: comments, error: commentsError } = await supabaseClient
+                .from('video_comments')
+                .select('id, comment_text, created_at, updated_at, user_id')
+                .eq('video_id', videoId)
+                .order('created_at', { ascending: false });
+            
+            if (commentsError) {
+                console.error('Erro ao buscar comentários:', commentsError);
+                if (commentsCount) commentsCount.textContent = '0';
+                if (commentsList) commentsList.innerHTML = '<div class="no-comments">Nenhum comentário ainda.</div>';
+                return;
+            }
+            
+            // Atualizar contador
+            const totalComments = comments ? comments.length : 0;
+            if (commentsCount) commentsCount.textContent = totalComments.toString();
+            
+            // Renderizar comentários
+            if (commentsList) {
+                if (totalComments === 0) {
+                    commentsList.innerHTML = '<div class="no-comments">Nenhum comentário ainda. Seja o primeiro a comentar!</div>';
+                } else {
+                    commentsList.innerHTML = comments.map(comment => {
+                        // Usar parte do ID como identificador do usuário
+                        const displayName = comment.user_id === session.user.id 
+                            ? 'Você' 
+                            : `Usuário ${comment.user_id.substring(0, 8)}`;
+                        const commentDate = new Date(comment.created_at);
+                        const formattedDate = formatCommentDate(commentDate);
+                        const isOwnComment = session.user.id === comment.user_id;
+                        
+                        return `
+                            <div class="comment-item ${isOwnComment ? 'own-comment' : ''}" data-comment-id="${comment.id}">
+                                <div class="comment-header">
+                                    <span class="comment-author">${escapeHtml(displayName)}</span>
+                                    <span class="comment-date">${formattedDate}</span>
+                                    ${isOwnComment ? `<button class="comment-delete-btn" data-comment-id="${comment.id}" title="Deletar">×</button>` : ''}
+                                </div>
+                                <div class="comment-text">${escapeHtml(comment.comment_text)}</div>
+                            </div>
+                        `;
+                    }).join('');
+                    
+                    // Adicionar event listeners para botões de deletar
+                    commentsList.querySelectorAll('.comment-delete-btn').forEach(btn => {
+                        btn.addEventListener('click', async (e) => {
+                            e.stopPropagation();
+                            const commentId = btn.getAttribute('data-comment-id');
+                            if (commentId) {
+                                await deleteComment(commentId, videoId);
+                            }
+                        });
+                    });
+                }
+            }
+        } catch (error) {
+            console.error('Erro ao carregar comentários:', error);
+            if (commentsCount) commentsCount.textContent = '0';
+            if (commentsList) commentsList.innerHTML = '<div class="no-comments">Erro ao carregar comentários.</div>';
+        }
+    }
+    
+    // Formatar data do comentário
+    function formatCommentDate(date) {
+        const now = new Date();
+        const diffMs = now - date;
+        const diffMins = Math.floor(diffMs / 60000);
+        const diffHours = Math.floor(diffMs / 3600000);
+        const diffDays = Math.floor(diffMs / 86400000);
+        
+        if (diffMins < 1) {
+            return 'agora';
+        } else if (diffMins < 60) {
+            return `${diffMins} min${diffMins > 1 ? 's' : ''} atrás`;
+        } else if (diffHours < 24) {
+            return `${diffHours} hora${diffHours > 1 ? 's' : ''} atrás`;
+        } else if (diffDays < 7) {
+            return `${diffDays} dia${diffDays > 1 ? 's' : ''} atrás`;
+        } else {
+            return date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+        }
+    }
+    
+    // Escapar HTML para prevenir XSS
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+    
+    // Adicionar comentário
+    async function addComment(videoId, commentText) {
+        try {
+            if (!videoId || !commentText || !supabaseClient) {
+                console.warn('Dados inválidos para adicionar comentário');
+                return;
+            }
+            
+            // Verificar autenticação
+            const { data: { session }, error: sessionError } = await supabaseClient.auth.getSession();
+            if (sessionError || !session) {
+                console.warn('Usuário não autenticado');
+                return;
+            }
+            
+            // Limpar espaços em branco
+            const trimmedText = commentText.trim();
+            if (trimmedText.length === 0) {
+                console.warn('Comentário vazio');
+                return;
+            }
+            
+            if (trimmedText.length > 500) {
+                console.warn('Comentário muito longo (máximo 500 caracteres)');
+                return;
+            }
+            
+            // Inserir comentário
+            const { error: insertError } = await supabaseClient
+                .from('video_comments')
+                .insert({
+                    user_id: session.user.id,
+                    video_id: videoId,
+                    comment_text: trimmedText
+                });
+            
+            if (insertError) {
+                console.error('Erro ao adicionar comentário:', insertError);
+                alert('Erro ao adicionar comentário. Tente novamente.');
+            } else {
+                // Limpar input
+                if (commentInput) commentInput.value = '';
+                // Recarregar comentários
+                await loadVideoComments(videoId);
+            }
+        } catch (error) {
+            console.error('Erro ao adicionar comentário:', error);
+            alert('Erro ao adicionar comentário. Tente novamente.');
+        }
+    }
+    
+    // Deletar comentário
+    async function deleteComment(commentId, videoId) {
+        try {
+            if (!commentId || !videoId || !supabaseClient) {
+                console.warn('Dados inválidos para deletar comentário');
+                return;
+            }
+            
+            // Verificar autenticação
+            const { data: { session }, error: sessionError } = await supabaseClient.auth.getSession();
+            if (sessionError || !session) {
+                console.warn('Usuário não autenticado');
+                return;
+            }
+            
+            // Deletar comentário
+            const { error: deleteError } = await supabaseClient
+                .from('video_comments')
+                .delete()
+                .eq('id', commentId)
+                .eq('user_id', session.user.id); // Garantir que só deleta seus próprios comentários
+            
+            if (deleteError) {
+                console.error('Erro ao deletar comentário:', deleteError);
+                alert('Erro ao deletar comentário. Tente novamente.');
+            } else {
+                // Recarregar comentários
+                await loadVideoComments(videoId);
+            }
+        } catch (error) {
+            console.error('Erro ao deletar comentário:', error);
+            alert('Erro ao deletar comentário. Tente novamente.');
+        }
+    }
+    
+    // Abrir modal de comentários
+    function openCommentsModal() {
+        if (commentsModal) {
+            commentsModal.classList.add("active");
+            document.body.style.overflow = "hidden";
+            // Carregar comentários do vídeo atual
+            if (videoList.length > 0 && currentVideoIndex >= 0 && currentVideoIndex < videoList.length) {
+                const currentVideo = videoList[currentVideoIndex];
+                if (currentVideo && currentVideo.id) {
+                    loadVideoComments(currentVideo.id);
+                }
+            }
+        }
+    }
+    
+    // Fechar modal de comentários
+    function closeCommentsModal() {
+        if (commentsModal) {
+            commentsModal.classList.remove("active");
+            document.body.style.overflow = "";
+        }
+    }
+    
     // ========== FUNÇÕES DE AUTENTICAÇÃO ==========
     
     // Verificar se usuário está autenticado
@@ -1762,6 +2197,14 @@ fullscreen.onclick = () => {
             logoutBtn.style.display = "none";
             logoutBtn.classList.add("hidden");
         }
+        // Esconder botão de like quando não autenticado
+        if (likeBtn) {
+            likeBtn.style.display = "none";
+        }
+        // Esconder botão de comentários quando não autenticado
+        if (commentsBtn) {
+            commentsBtn.style.display = "none";
+        }
     }
     
     // Esconder modal de autenticação
@@ -1774,6 +2217,28 @@ fullscreen.onclick = () => {
         if (logoutBtn) {
             logoutBtn.style.display = "flex";
             logoutBtn.classList.remove("hidden");
+        }
+        // Mostrar botão de like quando autenticado
+        if (likeBtn) {
+            likeBtn.style.display = "flex";
+            // Recarregar likes do vídeo atual se houver
+            if (videoList.length > 0 && currentVideoIndex >= 0 && currentVideoIndex < videoList.length) {
+                const currentVideo = videoList[currentVideoIndex];
+                if (currentVideo && currentVideo.id) {
+                    loadVideoLikes(currentVideo.id);
+                }
+            }
+        }
+        // Mostrar botão de comentários quando autenticado
+        if (commentsBtn) {
+            commentsBtn.style.display = "flex";
+            // Recarregar comentários do vídeo atual se houver
+            if (videoList.length > 0 && currentVideoIndex >= 0 && currentVideoIndex < videoList.length) {
+                const currentVideo = videoList[currentVideoIndex];
+                if (currentVideo && currentVideo.id) {
+                    loadVideoComments(currentVideo.id);
+                }
+            }
         }
     }
     
