@@ -433,6 +433,17 @@ video {
     background: rgba(255, 0, 0, 0.4);
 }
 
+.controls-row .like-btn.disabled {
+    opacity: 0.7;
+    cursor: pointer;
+    pointer-events: auto;
+}
+
+.controls-row .like-btn.disabled:hover {
+    opacity: 0.9;
+    background: rgba(255, 255, 255, 0.15);
+}
+
 .like-icon {
     font-size: 18px;
     transition: transform 0.2s ease;
@@ -463,6 +474,17 @@ video {
 .controls-row .comments-btn:hover {
     background: rgba(255, 255, 255, 0.2);
     transform: scale(1.05);
+}
+
+.controls-row .comments-btn.disabled {
+    opacity: 0.7;
+    cursor: pointer;
+    pointer-events: auto;
+}
+
+.controls-row .comments-btn.disabled:hover {
+    opacity: 0.9;
+    background: rgba(255, 255, 255, 0.15);
 }
 
 .comments-icon {
@@ -1539,7 +1561,7 @@ input[type="range"]:hover::-moz-range-thumb {
     left: 0;
     width: 100%;
     height: 100%;
-    background: rgba(0, 0, 0, 0.95);
+    background: rgba(0, 0, 0, 0.85);
     backdrop-filter: blur(20px);
     -webkit-backdrop-filter: blur(20px);
     z-index: 10000;
@@ -1713,6 +1735,83 @@ input[type="range"]:hover::-moz-range-thumb {
     transform: translateY(0);
 }
 
+.auth-guest-btn {
+    padding: 10px 20px;
+    background: transparent;
+    color: rgba(255, 255, 255, 0.5);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+    margin-top: 8px;
+    width: 100%;
+}
+
+.auth-guest-btn:hover {
+    background: rgba(255, 255, 255, 0.05);
+    color: rgba(255, 255, 255, 0.8);
+    border-color: rgba(255, 255, 255, 0.3);
+}
+
+/* Banner de Usuário Anônimo */
+.guest-banner {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    background: rgba(255, 193, 7, 0.15);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border-bottom: 1px solid rgba(255, 193, 7, 0.3);
+    padding: 8px 20px;
+    z-index: 9999;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.3s ease;
+}
+
+.guest-banner.active {
+    display: flex;
+}
+
+.guest-banner-content {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: rgba(255, 255, 255, 0.9);
+    font-size: 13px;
+}
+
+.guest-banner-icon {
+    font-size: 16px;
+}
+
+.guest-banner-text {
+    color: rgba(255, 255, 255, 0.85);
+}
+
+.guest-banner-text strong {
+    color: rgba(255, 193, 7, 0.9);
+    font-weight: 600;
+}
+
+.guest-banner-link {
+    color: rgba(255, 193, 7, 0.95);
+    text-decoration: underline;
+    cursor: pointer;
+    font-weight: 500;
+    transition: color 0.2s;
+    margin-left: 4px;
+}
+
+.guest-banner-link:hover {
+    color: rgba(255, 193, 7, 1);
+    text-decoration: none;
+}
+
 /* Modal de Comentários */
 .comments-modal {
     display: none;
@@ -1857,10 +1956,47 @@ input[type="range"]:hover::-moz-range-thumb {
 }
 
 .comment-item {
+    display: flex;
+    gap: 12px;
     background: rgba(255, 255, 255, 0.05);
     border-radius: 8px;
     padding: 16px;
     transition: background 0.2s ease;
+}
+
+.comment-avatar {
+    flex-shrink: 0;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    overflow: hidden;
+    background: rgba(255, 255, 255, 0.1);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.comment-avatar-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.comment-avatar-placeholder {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-weight: 600;
+    font-size: 18px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+
+.comment-content {
+    flex: 1;
+    min-width: 0;
 }
 
 .comment-item:hover {

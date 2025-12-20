@@ -231,6 +231,7 @@
                 </div>
                 <div class="auth-error" id="loginError"></div>
                 <button type="submit" class="auth-submit-btn">Entrar</button>
+                <button type="button" class="auth-guest-btn" id="guestLoginBtn">Entrar como convidado</button>
             </form>
             
             <!-- Formulário de Registro -->
@@ -239,14 +240,31 @@
                     <input type="email" id="registerEmail" placeholder="Email" required autocomplete="email">
                 </div>
                 <div class="auth-form-group">
+                    <input type="text" id="registerUsername" placeholder="Nome de usuário" required autocomplete="username" minlength="3" maxlength="30">
+                </div>
+                <div class="auth-form-group">
                     <input type="password" id="registerPassword" placeholder="Senha (mín. 8 caracteres)" required autocomplete="new-password" minlength="8">
                 </div>
                 <div class="auth-form-group">
                     <input type="password" id="registerPasswordConfirm" placeholder="Confirmar Senha" required autocomplete="new-password" minlength="8">
                 </div>
+                <div class="auth-form-group">
+                    <label for="registerAvatar" style="color: rgba(255, 255, 255, 0.7); font-size: 14px; margin-bottom: 8px; display: block;">Imagem de perfil (opcional)</label>
+                    <input type="file" id="registerAvatar" accept="image/*" style="color: rgba(255, 255, 255, 0.7);">
+                </div>
                 <div class="auth-error" id="registerError"></div>
                 <button type="submit" class="auth-submit-btn">Registrar</button>
+                <button type="button" class="auth-guest-btn" id="guestLoginBtnRegister">Entrar como convidado</button>
             </form>
+        </div>
+    </div>
+
+    <!-- Banner de Usuário Anônimo -->
+    <div class="guest-banner" id="guestBanner">
+        <div class="guest-banner-content">
+            <span class="guest-banner-icon">👤</span>
+            <span class="guest-banner-text">Você está navegando como <strong>convidado</strong></span>
+            <a href="#" class="guest-banner-link" id="guestBannerLink">Fazer login ou registrar</a>
         </div>
     </div>
 

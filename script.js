@@ -12,6 +12,9 @@
     let commandNotification, notificationIcon, notificationText; // Notificação de comando
     let authModal, loginForm, registerForm, authTabs, authClose; // Elementos de autenticação
     let logoutBtn; // Botão de logout
+    let guestLoginBtn, guestLoginBtnRegister; // Botões de login como convidado
+    let guestBanner, guestBannerLink; // Banner de usuário anônimo
+    let isGuestMode = false; // Flag para modo guest
     let likeBtn, likeCount; // Botão de like e contador
     let commentsBtn, commentsCount, commentsModal, commentsCloseBtn, commentsList, commentInput, commentSubmitBtn; // Elementos de comentários
     let videoList = [];
@@ -77,6 +80,10 @@
         authTabs = document.querySelectorAll(".auth-tab"); // Tabs de autenticação
         authClose = document.getElementById("authClose"); // Botão de fechar modal
         logoutBtn = document.getElementById("logoutBtn"); // Botão de logout
+        guestLoginBtn = document.getElementById("guestLoginBtn"); // Botão de login como convidado (login)
+        guestLoginBtnRegister = document.getElementById("guestLoginBtnRegister"); // Botão de login como convidado (registro)
+        guestBanner = document.getElementById("guestBanner"); // Banner de usuário anônimo
+        guestBannerLink = document.getElementById("guestBannerLink"); // Link do banner para login
         likeBtn = document.getElementById("likeBtn"); // Botão de like
         likeCount = document.getElementById("likeCount"); // Contador de likes
         commentsBtn = document.getElementById("commentsBtn"); // Botão de comentários
@@ -216,11 +223,23 @@
         updateQueueDisplay();
         updateVideoTitle();
         
-        // Carregar likes do vídeo
-        loadVideoLikes(selectedVideo.id);
-        
-        // Carregar comentários do vídeo
-        loadVideoComments(selectedVideo.id);
+        // Carregar likes do vídeo (sempre, mesmo para guests)
+        if (selectedVideo && selectedVideo.id) {
+            console.log('Carregando likes e comentários para vídeo:', selectedVideo.id);
+            // Garantir que os botões estejam visíveis antes de carregar
+            if (isGuestMode) {
+                if (likeBtn) {
+                    likeBtn.style.display = "flex";
+                    likeBtn.style.visibility = "visible";
+                }
+                if (commentsBtn) {
+                    commentsBtn.style.display = "flex";
+                    commentsBtn.style.visibility = "visible";
+                }
+            }
+            loadVideoLikes(selectedVideo.id);
+            loadVideoComments(selectedVideo.id);
+        }
         
         if (!video.paused) {
             video.play();
@@ -1021,12 +1040,15 @@ fullscreen.onclick = () => {
             return;
         }
 
-        supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        // Não criar nova instância se já existe
+        if (!supabaseClient) {
+            supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        }
 
         // uploadBtn já foi inicializado em initDOMElements() como variável global
         uploadModal = document.getElementById("uploadModal");
         const uploadCloseBtn = document.getElementById("uploadCloseBtn");
-        const uploadCancelBtn = document.getElementById("uploadCancelBtn");
+        const uploadCancelBtn = document.getElementById("uploadCancelBtn")
         const uploadForm = document.getElementById("uploadForm");
         const videoFileInput = document.getElementById("videoFile");
         const thumbnailFileInput = document.getElementById("thumbnailFile");
@@ -1048,8 +1070,26 @@ fullscreen.onclick = () => {
         let videoDurationSeconds = 0;
 
         if (uploadBtn) {
-            uploadBtn.addEventListener("click", (e) => {
+            uploadBtn.addEventListener("click", async (e) => {
                 e.stopPropagation();
+                
+                // Verificar autenticação antes de abrir modal
+                if (!supabaseClient) {
+                    if (typeof supabase !== 'undefined') {
+                        initSupabase();
+                    } else {
+                        alert("Erro: Supabase não está disponível. Recarregue a página.");
+                        return;
+                    }
+                }
+                
+                const { data: { session } } = await supabaseClient.auth.getSession();
+                if (!session || isGuestMode) {
+                    // Não está autenticado ou é guest - mostrar modal de login
+                    showAuthModal();
+                    return;
+                }
+                
                 if (uploadModal) {
                     uploadModal.classList.add("active");
                     document.body.style.overflow = "hidden";
@@ -1319,7 +1359,8 @@ fullscreen.onclick = () => {
                                 url: videoUrlData.publicUrl,
                                 thumbnail: thumbnailUrlData.publicUrl,
                                 duration: duration,
-                                order_index: nextOrderIndex
+                                order_index: nextOrderIndex,
+                                user_id: session.user.id // Registrar quem enviou o vídeo
                             }
                         ])
                         .select()
@@ -1810,46 +1851,101 @@ fullscreen.onclick = () => {
     // Carregar likes do vídeo atual
     async function loadVideoLikes(videoId) {
         try {
-            if (!videoId || !supabaseClient) {
+            console.log('loadVideoLikes chamado para videoId:', videoId, 'supabaseClient:', !!supabaseClient, 'likeCount:', !!likeCount, 'likeBtn:', !!likeBtn);
+            
+            if (!videoId) {
+                console.warn('loadVideoLikes: videoId não fornecido');
                 if (likeCount) likeCount.textContent = '0';
                 if (likeBtn) likeBtn.classList.remove('liked');
                 return;
             }
             
-            // Obter sessão do usuário
-            const { data: { session } } = await supabaseClient.auth.getSession();
-            if (!session) {
+            if (!supabaseClient) {
+                console.warn('loadVideoLikes: supabaseClient não inicializado');
                 if (likeCount) likeCount.textContent = '0';
                 if (likeBtn) likeBtn.classList.remove('liked');
                 return;
             }
             
-            // Buscar total de likes do vídeo
-            const { count: totalLikes, error: countError } = await supabaseClient
+            // Buscar total de likes do vídeo (funciona para guests também)
+            // Primeiro, tentar buscar todos os likes para verificar se há dados
+            const { data: allLikes, error: dataError } = await supabaseClient
                 .from('video_likes')
-                .select('*', { count: 'exact', head: true })
+                .select('id')
                 .eq('video_id', videoId);
             
-            if (countError) {
-                console.error('Erro ao buscar total de likes:', countError);
-                if (likeCount) likeCount.textContent = '0';
+            if (dataError) {
+                console.error('Erro ao buscar likes (método 1):', dataError);
+                console.error('Detalhes do erro:', JSON.stringify(dataError, null, 2));
+                
+                // Tentar método alternativo com count
+                const { count: totalLikes, error: countError } = await supabaseClient
+                    .from('video_likes')
+                    .select('*', { count: 'exact', head: true })
+                    .eq('video_id', videoId);
+                
+                if (countError) {
+                    console.error('Erro ao buscar total de likes (método 2):', countError);
+                    if (likeCount) {
+                        likeCount.textContent = '0';
+                    }
+                } else {
+                    const likesNum = totalLikes || 0;
+                    console.log(`Likes carregados (método 2) para vídeo ${videoId}: ${likesNum}`);
+                    if (likeCount) {
+                        likeCount.textContent = likesNum.toString();
+                    }
+                }
             } else {
-                if (likeCount) likeCount.textContent = (totalLikes || 0).toString();
+                const likesNum = allLikes ? allLikes.length : 0;
+                console.log(`Likes carregados (método 1) para vídeo ${videoId}: ${likesNum}`, allLikes);
+                if (likeCount) {
+                    likeCount.textContent = likesNum.toString();
+                    console.log('likeCount atualizado para:', likesNum);
+                } else {
+                    console.error('likeCount não encontrado no DOM! Verificando novamente...');
+                    likeCount = document.getElementById("likeCount");
+                    if (likeCount) {
+                        likeCount.textContent = likesNum.toString();
+                        console.log('likeCount encontrado na segunda tentativa e atualizado para:', likesNum);
+                    } else {
+                        console.error('likeCount AINDA não encontrado no DOM após segunda tentativa!');
+                    }
+                }
+            }
+            
+            // Se está em modo guest, não verificar se o usuário deu like
+            if (isGuestMode) {
+                if (likeBtn) {
+                    likeBtn.classList.remove('liked');
+                }
+                return;
+            }
+            
+            // Obter sessão do usuário (apenas para usuários autenticados)
+            const { data: { session } } = await supabaseClient.auth.getSession();
+            if (!session) {
+                if (likeBtn) likeBtn.classList.remove('liked');
+                return;
             }
             
             // Verificar se o usuário atual já deu like
-            const { data: userLike, error: likeError } = await supabaseClient
+            // Não usar .single() pois pode não haver resultado (causa erro 406)
+            const { data: userLikes, error: likeError } = await supabaseClient
                 .from('video_likes')
                 .select('id')
                 .eq('video_id', videoId)
                 .eq('user_id', session.user.id)
-                .single();
+                .limit(1);
             
-            if (likeError && likeError.code !== 'PGRST116') { // PGRST116 = nenhum resultado
+            if (likeError) {
                 console.error('Erro ao verificar like do usuário:', likeError);
+                if (likeBtn) {
+                    likeBtn.classList.remove('liked');
+                }
             } else {
                 if (likeBtn) {
-                    if (userLike) {
+                    if (userLikes && userLikes.length > 0) {
                         likeBtn.classList.add('liked');
                     } else {
                         likeBtn.classList.remove('liked');
@@ -1866,6 +1962,12 @@ fullscreen.onclick = () => {
     // Dar ou remover like
     async function toggleLike() {
         try {
+            // Não permitir likes em modo guest
+            if (isGuestMode) {
+                showAuthModal();
+                return;
+            }
+            
             if (!supabaseClient) {
                 console.warn('Supabase não inicializado');
                 return;
@@ -1875,6 +1977,7 @@ fullscreen.onclick = () => {
             const { data: { session }, error: sessionError } = await supabaseClient.auth.getSession();
             if (sessionError || !session) {
                 console.warn('Usuário não autenticado');
+                showAuthModal();
                 return;
             }
             
@@ -1950,68 +2053,210 @@ fullscreen.onclick = () => {
                 return;
             }
             
-            // Obter sessão do usuário
-            const { data: { session } } = await supabaseClient.auth.getSession();
-            if (!session) {
-                if (commentsCount) commentsCount.textContent = '0';
-                if (commentsList) commentsList.innerHTML = '';
-                return;
-            }
+            console.log('loadVideoComments chamado para videoId:', videoId, 'supabaseClient:', !!supabaseClient, 'commentsCount:', !!commentsCount, 'commentsList:', !!commentsList);
             
-            // Buscar comentários do vídeo
+            // Buscar comentários do vídeo (funciona para guests também)
+            // IMPORTANTE: Usar SUPABASE_ANON_KEY se não houver sessão (para guests)
             const { data: comments, error: commentsError } = await supabaseClient
                 .from('video_comments')
                 .select('id, comment_text, created_at, updated_at, user_id')
                 .eq('video_id', videoId)
                 .order('created_at', { ascending: false });
             
+            console.log('Resultado da query de comentários:', { 
+                comments: comments, 
+                error: commentsError, 
+                count: comments ? comments.length : 0,
+                isGuestMode: isGuestMode 
+            });
+            
             if (commentsError) {
                 console.error('Erro ao buscar comentários:', commentsError);
-                if (commentsCount) commentsCount.textContent = '0';
-                if (commentsList) commentsList.innerHTML = '<div class="no-comments">Nenhum comentário ainda.</div>';
+                console.error('Detalhes do erro:', JSON.stringify(commentsError, null, 2));
+                console.error('Código do erro:', commentsError.code);
+                console.error('Mensagem do erro:', commentsError.message);
+                console.error('Detalhes completos:', commentsError);
+                
+                if (commentsCount) {
+                    commentsCount.textContent = '0';
+                    console.log('commentsCount atualizado para 0 devido a erro');
+                } else {
+                    console.error('commentsCount não encontrado no DOM! Verificando novamente...');
+                    commentsCount = document.getElementById("commentsCount");
+                    if (commentsCount) {
+                        commentsCount.textContent = '0';
+                        console.log('commentsCount encontrado na segunda tentativa');
+                    } else {
+                        console.error('commentsCount AINDA não encontrado no DOM após segunda tentativa!');
+                    }
+                }
+                if (commentsList) {
+                    commentsList.innerHTML = '<div class="no-comments">Nenhum comentário ainda.</div>';
+                } else {
+                    console.error('commentsList não encontrado no DOM! Verificando novamente...');
+                    commentsList = document.getElementById("commentsList");
+                    if (commentsList) {
+                        commentsList.innerHTML = '<div class="no-comments">Nenhum comentário ainda.</div>';
+                        console.log('commentsList encontrado na segunda tentativa');
+                    } else {
+                        console.error('commentsList AINDA não encontrado no DOM após segunda tentativa!');
+                    }
+                }
                 return;
             }
             
+            const commentsNum = comments ? comments.length : 0;
+            console.log(`Comentários carregados para vídeo ${videoId}: ${commentsNum}`, comments);
+            
             // Atualizar contador
             const totalComments = comments ? comments.length : 0;
-            if (commentsCount) commentsCount.textContent = totalComments.toString();
+            if (commentsCount) {
+                commentsCount.textContent = totalComments.toString();
+                console.log('commentsCount atualizado para:', totalComments);
+            } else {
+                console.error('commentsCount não encontrado no DOM! Verificando novamente...');
+                commentsCount = document.getElementById("commentsCount");
+                if (commentsCount) {
+                    commentsCount.textContent = totalComments.toString();
+                    console.log('commentsCount encontrado na segunda tentativa e atualizado para:', totalComments);
+                } else {
+                    console.error('commentsCount AINDA não encontrado no DOM após segunda tentativa!');
+                }
+            }
+            
+            // Obter sessão do usuário (se houver)
+            let session = null;
+            if (!isGuestMode) {
+                const { data: { session: userSession } } = await supabaseClient.auth.getSession();
+                session = userSession;
+            }
             
             // Renderizar comentários
             if (commentsList) {
+                console.log('Renderizando comentários. Total:', totalComments, 'isGuestMode:', isGuestMode);
                 if (totalComments === 0) {
-                    commentsList.innerHTML = '<div class="no-comments">Nenhum comentário ainda. Seja o primeiro a comentar!</div>';
+                    const message = isGuestMode 
+                        ? 'Nenhum comentário ainda.' 
+                        : 'Nenhum comentário ainda. Seja o primeiro a comentar!';
+                    commentsList.innerHTML = `<div class="no-comments">${message}</div>`;
+                    console.log('Comentários renderizados (vazio):', commentsList.innerHTML);
                 } else {
+                    console.log('Renderizando', totalComments, 'comentários');
+                    
+                    // Buscar perfis dos usuários que comentaram
+                    const userIds = [...new Set(comments.map(c => c.user_id))];
+                    console.log('Buscando perfis para user_ids:', userIds);
+                    
+                    // Tentar buscar perfis - verificar se a tabela existe e se há dados
+                    // IMPORTANTE: Usar .select() sem filtros primeiro para verificar se há dados
+                    let profiles = [];
+                    let profilesError = null;
+                    
+                    // Primeiro, tentar buscar todos os perfis para verificar se a tabela tem dados
+                    const { data: allProfiles, error: allProfilesError } = await supabaseClient
+                        .from('profiles')
+                        .select('id, username, avatar_url')
+                        .limit(100);
+                    
+                    if (allProfilesError) {
+                        console.error('Erro ao buscar todos os perfis:', allProfilesError);
+                        console.error('Código do erro:', allProfilesError.code);
+                        console.error('Mensagem do erro:', allProfilesError.message);
+                        profilesError = allProfilesError;
+                    } else {
+                        console.log('Total de perfis na tabela:', allProfiles ? allProfiles.length : 0);
+                        console.log('Todos os perfis encontrados:', allProfiles);
+                        
+                        // Filtrar apenas os perfis dos usuários que comentaram
+                        if (allProfiles && allProfiles.length > 0) {
+                            profiles = allProfiles.filter(p => userIds.includes(p.id));
+                            console.log('Perfis filtrados para os comentários:', profiles);
+                        }
+                    }
+                    
+                    // Se ainda não encontrou, tentar buscar especificamente pelos IDs
+                    if (!profiles || profiles.length === 0) {
+                        console.log('Tentando buscar perfis usando .in()...');
+                        const { data: profilesByIn, error: profilesByInError } = await supabaseClient
+                            .from('profiles')
+                            .select('id, username, avatar_url')
+                            .in('id', userIds);
+                        
+                        if (profilesByInError) {
+                            console.error('Erro ao buscar perfis com .in():', profilesByInError);
+                        } else {
+                            console.log('Perfis encontrados com .in():', profilesByIn);
+                            if (profilesByIn && profilesByIn.length > 0) {
+                                profiles = profilesByIn;
+                            }
+                        }
+                    }
+                    
+                    const profilesMap = {};
+                    if (profiles && profiles.length > 0) {
+                        profiles.forEach(profile => {
+                            profilesMap[profile.id] = profile;
+                            console.log(`Perfil mapeado: ${profile.id} -> ${profile.username}, avatar: ${profile.avatar_url}`);
+                        });
+                    } else {
+                        console.warn('Nenhum perfil encontrado para os user_ids:', userIds);
+                    }
+                    
                     commentsList.innerHTML = comments.map(comment => {
-                        // Usar parte do ID como identificador do usuário
-                        const displayName = comment.user_id === session.user.id 
-                            ? 'Você' 
-                            : `Usuário ${comment.user_id.substring(0, 8)}`;
+                        const profile = profilesMap[comment.user_id];
+                        const username = profile?.username || `Usuário ${comment.user_id.substring(0, 8)}`;
+                        const avatarUrl = profile?.avatar_url || null;
+                        const isOwnComment = session && session.user && session.user.id === comment.user_id;
+                        // Sempre mostrar o username, não "Você"
+                        const displayName = username;
+                        
+                        console.log(`Renderizando comentário de ${comment.user_id}:`, {
+                            profile: profile,
+                            username: username,
+                            avatarUrl: avatarUrl,
+                            displayName: displayName
+                        });
+                        
                         const commentDate = new Date(comment.created_at);
                         const formattedDate = formatCommentDate(commentDate);
-                        const isOwnComment = session.user.id === comment.user_id;
+                        
+                        // Usar primeira letra do username real, não do fallback
+                        const avatarInitial = profile?.username ? profile.username.charAt(0).toUpperCase() : username.charAt(0).toUpperCase();
                         
                         return `
                             <div class="comment-item ${isOwnComment ? 'own-comment' : ''}" data-comment-id="${comment.id}">
-                                <div class="comment-header">
-                                    <span class="comment-author">${escapeHtml(displayName)}</span>
-                                    <span class="comment-date">${formattedDate}</span>
-                                    ${isOwnComment ? `<button class="comment-delete-btn" data-comment-id="${comment.id}" title="Deletar">×</button>` : ''}
+                                <div class="comment-avatar">
+                                    ${avatarUrl 
+                                        ? `<img src="${escapeHtml(avatarUrl)}" alt="${escapeHtml(username)}" class="comment-avatar-img" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">` 
+                                        : ''}
+                                    <div class="comment-avatar-placeholder" ${avatarUrl ? 'style="display:none;"' : ''}>${avatarInitial}</div>
                                 </div>
-                                <div class="comment-text">${escapeHtml(comment.comment_text)}</div>
+                                <div class="comment-content">
+                                    <div class="comment-header">
+                                        <span class="comment-author">${escapeHtml(displayName)}</span>
+                                        <span class="comment-date">${formattedDate}</span>
+                                        ${isOwnComment ? `<button class="comment-delete-btn" data-comment-id="${comment.id}" title="Deletar">×</button>` : ''}
+                                    </div>
+                                    <div class="comment-text">${escapeHtml(comment.comment_text)}</div>
+                                </div>
                             </div>
                         `;
                     }).join('');
                     
-                    // Adicionar event listeners para botões de deletar
-                    commentsList.querySelectorAll('.comment-delete-btn').forEach(btn => {
-                        btn.addEventListener('click', async (e) => {
-                            e.stopPropagation();
-                            const commentId = btn.getAttribute('data-comment-id');
-                            if (commentId) {
-                                await deleteComment(commentId, videoId);
-                            }
+                    console.log('HTML dos comentários gerado. Primeiros 200 caracteres:', commentsList.innerHTML.substring(0, 200));
+                    
+                    // Adicionar event listeners para botões de deletar (apenas se autenticado)
+                    if (session && session.user) {
+                        commentsList.querySelectorAll('.comment-delete-btn').forEach(btn => {
+                            btn.addEventListener('click', async (e) => {
+                                e.stopPropagation();
+                                const commentId = btn.getAttribute('data-comment-id');
+                                if (commentId) {
+                                    await deleteComment(commentId, videoId);
+                                }
+                            });
                         });
-                    });
+                    }
                 }
             }
         } catch (error) {
@@ -2052,6 +2297,12 @@ fullscreen.onclick = () => {
     // Adicionar comentário
     async function addComment(videoId, commentText) {
         try {
+            // Não permitir comentários em modo guest
+            if (isGuestMode) {
+                showAuthModal();
+                return;
+            }
+            
             if (!videoId || !commentText || !supabaseClient) {
                 console.warn('Dados inválidos para adicionar comentário');
                 return;
@@ -2061,6 +2312,7 @@ fullscreen.onclick = () => {
             const { data: { session }, error: sessionError } = await supabaseClient.auth.getSession();
             if (sessionError || !session) {
                 console.warn('Usuário não autenticado');
+                showAuthModal();
                 return;
             }
             
@@ -2140,13 +2392,40 @@ fullscreen.onclick = () => {
         if (commentsModal) {
             commentsModal.classList.add("active");
             document.body.style.overflow = "hidden";
-            // Carregar comentários do vídeo atual
+            
+            // Sempre carregar comentários do vídeo atual (mesmo para guests)
             if (videoList.length > 0 && currentVideoIndex >= 0 && currentVideoIndex < videoList.length) {
                 const currentVideo = videoList[currentVideoIndex];
                 if (currentVideo && currentVideo.id) {
+                    console.log('Abrindo modal de comentários e carregando para vídeo:', currentVideo.id, 'isGuestMode:', isGuestMode);
                     loadVideoComments(currentVideo.id);
                 }
             }
+            
+            // Desabilitar input e botão em modo guest (mas comentários devem ser visíveis)
+            if (isGuestMode) {
+                if (commentInput) {
+                    commentInput.disabled = true;
+                    commentInput.placeholder = "Faça login para comentar";
+                    commentInput.style.opacity = "0.5";
+                }
+                if (commentSubmitBtn) {
+                    commentSubmitBtn.disabled = true;
+                    commentSubmitBtn.style.opacity = "0.5";
+                }
+            } else {
+                if (commentInput) {
+                    commentInput.disabled = false;
+                    commentInput.placeholder = "Escreva um comentário...";
+                    commentInput.style.opacity = "1";
+                }
+                if (commentSubmitBtn) {
+                    commentSubmitBtn.disabled = false;
+                    commentSubmitBtn.style.opacity = "1";
+                }
+            }
+        } else {
+            console.error('commentsModal não encontrado no DOM!');
         }
     }
     
@@ -2158,10 +2437,29 @@ fullscreen.onclick = () => {
         }
     }
     
+    // Fechar modal ao clicar fora (comentários)
+    function initCommentsModalClickOutside() {
+        if (commentsModal) {
+            commentsModal.addEventListener('click', (e) => {
+                // Se clicou no próprio modal (não no conteúdo), fechar
+                if (e.target === commentsModal) {
+                    closeCommentsModal();
+                }
+            });
+        }
+    }
+    
     // ========== FUNÇÕES DE AUTENTICAÇÃO ==========
     
-    // Verificar se usuário está autenticado
+    // Verificar se usuário está autenticado ou em modo guest
     async function checkAuth() {
+        // Se está em modo guest, permitir acesso
+        if (isGuestMode) {
+            hideAuthModal();
+            updateGuestUI();
+            return true;
+        }
+        
         if (!supabaseClient) {
             if (!initSupabase()) {
                 console.error('Supabase não inicializado');
@@ -2177,12 +2475,107 @@ fullscreen.onclick = () => {
         
         if (session) {
             // Usuário autenticado
+            isGuestMode = false; // Garantir que não está em modo guest
             hideAuthModal();
+            updateGuestUI();
             return true;
         } else {
             // Usuário não autenticado
             showAuthModal();
+            updateGuestUI();
             return false;
+        }
+    }
+    
+    // Atualizar UI baseado no modo guest
+    async function updateGuestUI() {
+        if (isGuestMode) {
+            // Mostrar banner de usuário anônimo
+            if (guestBanner) {
+                guestBanner.classList.add("active");
+            }
+            // Mostrar botão de logout (para sair do modo guest)
+            if (logoutBtn) {
+                logoutBtn.style.display = "flex";
+                logoutBtn.classList.remove("hidden");
+            }
+            // Mostrar botões de like e comentários (mas desabilitados)
+            if (likeBtn) {
+                likeBtn.style.display = "flex";
+                likeBtn.classList.add("disabled");
+                // Garantir que o botão seja visível
+                likeBtn.style.visibility = "visible";
+                likeBtn.style.opacity = "0.7";
+            }
+            if (commentsBtn) {
+                commentsBtn.style.display = "flex";
+                commentsBtn.classList.add("disabled");
+                // Garantir que o botão seja visível
+                commentsBtn.style.visibility = "visible";
+                commentsBtn.style.opacity = "0.7";
+            }
+            
+            // Carregar likes e comentários imediatamente para guests
+            if (videoList.length > 0 && currentVideoIndex >= 0 && currentVideoIndex < videoList.length) {
+                const currentVideo = videoList[currentVideoIndex];
+                if (currentVideo && currentVideo.id) {
+                    console.log('Carregando likes e comentários para guest no updateGuestUI');
+                    loadVideoLikes(currentVideo.id);
+                    loadVideoComments(currentVideo.id);
+                }
+            }
+        } else {
+            // Esconder banner
+            if (guestBanner) {
+                guestBanner.classList.remove("active");
+            }
+            // Verificar se está realmente autenticado
+            if (supabaseClient) {
+                const { data: { session } } = await supabaseClient.auth.getSession();
+                if (session) {
+                    // Usuário autenticado - mostrar botões normalmente
+                    if (logoutBtn) {
+                        logoutBtn.style.display = "flex";
+                        logoutBtn.classList.remove("hidden");
+                    }
+                    if (likeBtn) {
+                        likeBtn.style.display = "flex";
+                        likeBtn.classList.remove("disabled");
+                    }
+                    if (commentsBtn) {
+                        commentsBtn.style.display = "flex";
+                        commentsBtn.classList.remove("disabled");
+                    }
+                } else {
+                    // Não autenticado - esconder botões
+                    if (logoutBtn) {
+                        logoutBtn.style.display = "none";
+                        logoutBtn.classList.add("hidden");
+                    }
+                    if (likeBtn) {
+                        likeBtn.style.display = "none";
+                        likeBtn.classList.remove("disabled");
+                    }
+                    if (commentsBtn) {
+                        commentsBtn.style.display = "none";
+                        commentsBtn.classList.remove("disabled");
+                    }
+                }
+            } else {
+                // Supabase não inicializado - esconder botões
+                if (logoutBtn) {
+                    logoutBtn.style.display = "none";
+                    logoutBtn.classList.add("hidden");
+                }
+                if (likeBtn) {
+                    likeBtn.style.display = "none";
+                    likeBtn.classList.remove("disabled");
+                }
+                if (commentsBtn) {
+                    commentsBtn.style.display = "none";
+                    commentsBtn.classList.remove("disabled");
+                }
+            }
         }
     }
     
@@ -2192,19 +2585,7 @@ fullscreen.onclick = () => {
             authModal.classList.add("active");
             document.body.style.overflow = "hidden";
         }
-        // Esconder botão de logout quando não autenticado
-        if (logoutBtn) {
-            logoutBtn.style.display = "none";
-            logoutBtn.classList.add("hidden");
-        }
-        // Esconder botão de like quando não autenticado
-        if (likeBtn) {
-            likeBtn.style.display = "none";
-        }
-        // Esconder botão de comentários quando não autenticado
-        if (commentsBtn) {
-            commentsBtn.style.display = "none";
-        }
+        updateGuestUI();
     }
     
     // Esconder modal de autenticação
@@ -2213,32 +2594,21 @@ fullscreen.onclick = () => {
             authModal.classList.remove("active");
             document.body.style.overflow = "";
         }
-        // Mostrar botão de logout quando autenticado
-        if (logoutBtn) {
-            logoutBtn.style.display = "flex";
-            logoutBtn.classList.remove("hidden");
-        }
-        // Mostrar botão de like quando autenticado
-        if (likeBtn) {
-            likeBtn.style.display = "flex";
-            // Recarregar likes do vídeo atual se houver
-            if (videoList.length > 0 && currentVideoIndex >= 0 && currentVideoIndex < videoList.length) {
-                const currentVideo = videoList[currentVideoIndex];
-                if (currentVideo && currentVideo.id) {
-                    loadVideoLikes(currentVideo.id);
+        updateGuestUI();
+    }
+    
+    // Fechar modal ao clicar fora (autenticação)
+    function initAuthModalClickOutside() {
+        if (authModal) {
+            authModal.addEventListener('click', (e) => {
+                // Se clicou no próprio modal (não no conteúdo), fechar
+                if (e.target === authModal) {
+                    // Só fechar se não estiver em modo guest (para não perder acesso)
+                    if (!isGuestMode) {
+                        hideAuthModal();
+                    }
                 }
-            }
-        }
-        // Mostrar botão de comentários quando autenticado
-        if (commentsBtn) {
-            commentsBtn.style.display = "flex";
-            // Recarregar comentários do vídeo atual se houver
-            if (videoList.length > 0 && currentVideoIndex >= 0 && currentVideoIndex < videoList.length) {
-                const currentVideo = videoList[currentVideoIndex];
-                if (currentVideo && currentVideo.id) {
-                    loadVideoComments(currentVideo.id);
-                }
-            }
+            });
         }
     }
     
@@ -2271,14 +2641,55 @@ fullscreen.onclick = () => {
             return false;
         }
         
-        // Login bem-sucedido
+        // Login bem-sucedido - resetar modo guest
+        isGuestMode = false;
         hideAuthModal();
         loadVideosFromDatabase();
         return true;
     }
     
+    // Login como convidado
+    function handleGuestLogin() {
+        // Inicializar Supabase mesmo em modo guest (necessário para views, watch_time, likes e comentários)
+        if (!supabaseClient) {
+            initSupabase();
+        }
+        isGuestMode = true;
+        hideAuthModal();
+        loadVideosFromDatabase();
+        // Garantir que likes e comentários sejam carregados após carregar vídeos
+        // Usar múltiplos timeouts para garantir que seja executado após o vídeo carregar
+        setTimeout(() => {
+            if (videoList.length > 0 && currentVideoIndex >= 0 && currentVideoIndex < videoList.length) {
+                const currentVideo = videoList[currentVideoIndex];
+                if (currentVideo && currentVideo.id) {
+                    console.log('Carregando likes e comentários após guest login para vídeo:', currentVideo.id);
+                    loadVideoLikes(currentVideo.id);
+                    loadVideoComments(currentVideo.id);
+                }
+            }
+        }, 1000);
+        
+        // Segundo timeout como fallback
+        setTimeout(() => {
+            if (videoList.length > 0 && currentVideoIndex >= 0 && currentVideoIndex < videoList.length) {
+                const currentVideo = videoList[currentVideoIndex];
+                if (currentVideo && currentVideo.id) {
+                    console.log('Fallback: Carregando likes e comentários após guest login para vídeo:', currentVideo.id);
+                    loadVideoLikes(currentVideo.id);
+                    loadVideoComments(currentVideo.id);
+                }
+            }
+        }, 2000);
+    }
+    
     // Registro
-    async function handleRegister(email, password, confirmPassword) {
+    async function handleRegister(email, username, password, confirmPassword, avatarFile) {
+        if (!username || username.trim().length < 3) {
+            showAuthError("register", "O nome de usuário deve ter no mínimo 3 caracteres!");
+            return false;
+        }
+        
         if (password !== confirmPassword) {
             showAuthError("register", "As senhas não coincidem!");
             return false;
@@ -2304,8 +2715,140 @@ fullscreen.onclick = () => {
             return false;
         }
         
+        if (!data.user) {
+            showAuthError("register", "Erro ao criar usuário");
+            return false;
+        }
+        
+        // Upload do avatar se fornecido
+        let avatarUrl = null;
+        if (avatarFile && avatarFile.files && avatarFile.files[0]) {
+            try {
+                const file = avatarFile.files[0];
+                const fileExt = file.name.split('.').pop();
+                const fileName = `${data.user.id}-${Date.now()}.${fileExt}`;
+                const filePath = `Avatars/${fileName}`;
+                
+                const { error: uploadError } = await supabaseClient.storage
+                    .from('v-p-player')
+                    .upload(filePath, file);
+                
+                if (uploadError) {
+                    console.error('Erro ao fazer upload do avatar:', uploadError);
+                } else {
+                    const { data: urlData } = supabaseClient.storage
+                        .from('v-p-player')
+                        .getPublicUrl(filePath);
+                    avatarUrl = urlData.publicUrl;
+                }
+            } catch (avatarError) {
+                console.error('Erro ao processar avatar:', avatarError);
+            }
+        }
+        
+        // Criar perfil do usuário
+        console.log('Criando perfil para usuário:', data.user.id, 'username:', username.trim(), 'avatar_url:', avatarUrl);
+        
+        // Tentar usar função RPC primeiro (bypass RLS)
+        let profileData = null;
+        let profileError = null;
+        
+        try {
+            const { data: rpcData, error: rpcError } = await supabaseClient.rpc('create_user_profile', {
+                user_id: data.user.id,
+                user_username: username.trim(),
+                user_avatar_url: avatarUrl,
+                user_email: email
+            });
+            
+            if (rpcError) {
+                console.warn('Erro ao criar perfil via RPC:', rpcError);
+                // Tentar método direto como fallback
+                const { data: directData, error: directError } = await supabaseClient
+                    .from('profiles')
+                    .insert({
+                        id: data.user.id,
+                        username: username.trim(),
+                        avatar_url: avatarUrl,
+                        email: email
+                    })
+                    .select()
+                    .single();
+                
+                profileData = directData;
+                profileError = directError;
+            } else {
+                console.log('Perfil criado via RPC:', rpcData);
+                profileData = rpcData;
+            }
+        } catch (rpcException) {
+            console.error('Exceção ao tentar criar perfil via RPC:', rpcException);
+            // Tentar método direto como fallback
+            const { data: directData, error: directError } = await supabaseClient
+                .from('profiles')
+                .insert({
+                    id: data.user.id,
+                    username: username.trim(),
+                    avatar_url: avatarUrl,
+                    email: email
+                })
+                .select()
+                .single();
+            
+            profileData = directData;
+            profileError = directError;
+        }
+        
+        if (profileError) {
+            console.error('Erro ao criar perfil:', profileError);
+            console.error('Código do erro:', profileError.code);
+            console.error('Mensagem do erro:', profileError.message);
+            console.error('Detalhes completos:', JSON.stringify(profileError, null, 2));
+            
+            // Mostrar erro ao usuário
+            showAuthError("register", "Erro ao criar perfil: " + profileError.message + ". O usuário foi criado, mas o perfil não. Entre em contato com o suporte.");
+            
+            // Tentar novamente após um delay usando RPC
+            setTimeout(async () => {
+                console.log('Tentando criar perfil novamente via RPC...');
+                const { data: retryRpcData, error: retryRpcError } = await supabaseClient.rpc('create_user_profile', {
+                    user_id: data.user.id,
+                    user_username: username.trim(),
+                    user_avatar_url: avatarUrl,
+                    user_email: email
+                });
+                
+                if (retryRpcError) {
+                    console.error('Erro ao criar perfil na segunda tentativa (RPC):', retryRpcError);
+                } else {
+                    console.log('Perfil criado com sucesso na segunda tentativa (RPC):', retryRpcData);
+                }
+            }, 2000);
+            
+            // Continuar mesmo se houver erro no perfil (usuário foi criado)
+        } else {
+            console.log('Perfil criado com sucesso:', profileData);
+        }
+        
+        // Verificar se o perfil foi realmente criado
+        const { data: verifyProfile, error: verifyError } = await supabaseClient
+            .from('profiles')
+            .select('id, username, avatar_url')
+            .eq('id', data.user.id)
+            .single();
+        
+        if (verifyError) {
+            console.error('Erro ao verificar perfil criado:', verifyError);
+        } else {
+            console.log('Perfil verificado após criação:', verifyProfile);
+        }
+        
         // Registro bem-sucedido
-        showAuthError("register", "Registro realizado! Verifique seu email para confirmar a conta.");
+        if (profileError) {
+            showAuthError("register", "Registro realizado! Verifique seu email para confirmar a conta. Nota: Houve um problema ao criar o perfil, mas você pode fazer login.");
+        } else {
+            showAuthError("register", "Registro realizado! Verifique seu email para confirmar a conta.");
+        }
         
         // Trocar para aba de login após 2 segundos
         setTimeout(() => {
@@ -2317,9 +2860,29 @@ fullscreen.onclick = () => {
     
     // Logout
     async function handleLogout() {
+        if (isGuestMode) {
+            // Se está em modo guest, apenas resetar
+            isGuestMode = false;
+            showAuthModal();
+            videoList = [];
+            currentVideoIndex = 0;
+            if (video) {
+                video.src = "";
+            }
+            if (queueList) {
+                queueList.innerHTML = "";
+            }
+            if (videoTitle) {
+                videoTitle.textContent = "";
+            }
+            document.title = "V.P. Player";
+            return;
+        }
+        
         if (!supabaseClient) return;
         
         await supabaseClient.auth.signOut();
+        isGuestMode = false;
         showAuthModal();
         videoList = [];
         currentVideoIndex = 0;
@@ -2390,9 +2953,32 @@ fullscreen.onclick = () => {
             registerForm.addEventListener("submit", async (e) => {
                 e.preventDefault();
                 const email = document.getElementById("registerEmail").value;
+                const username = document.getElementById("registerUsername").value;
                 const password = document.getElementById("registerPassword").value;
                 const confirmPassword = document.getElementById("registerPasswordConfirm").value;
-                await handleRegister(email, password, confirmPassword);
+                const avatarFile = document.getElementById("registerAvatar");
+                await handleRegister(email, username, password, confirmPassword, avatarFile);
+            });
+        }
+        
+        // Botões de login como convidado
+        if (guestLoginBtn) {
+            guestLoginBtn.addEventListener("click", () => {
+                handleGuestLogin();
+            });
+        }
+        
+        if (guestLoginBtnRegister) {
+            guestLoginBtnRegister.addEventListener("click", () => {
+                handleGuestLogin();
+            });
+        }
+        
+        // Link do banner para abrir modal de autenticação
+        if (guestBannerLink) {
+            guestBannerLink.addEventListener("click", (e) => {
+                e.preventDefault();
+                showAuthModal();
             });
         }
         
@@ -2407,8 +2993,10 @@ fullscreen.onclick = () => {
                 }
                 
                 if (event === 'SIGNED_OUT') {
+                    isGuestMode = false;
                     showAuthModal();
                 } else if (event === 'SIGNED_IN') {
+                    isGuestMode = false; // Resetar modo guest ao fazer login real
                     hideAuthModal();
                     // Só recarregar se realmente houver mudança de estado (não apenas ao voltar à aba)
                     if (!isInitialAuthCheck) {
@@ -2488,6 +3076,8 @@ fullscreen.onclick = () => {
         initStats(); // Inicializar dashboard
         initAuth(); // Inicializar autenticação
         initVisibilityHandlers(); // Gerenciar visibilidade da aba
+        initCommentsModalClickOutside(); // Fechar modal de comentários ao clicar fora
+        initAuthModalClickOutside(); // Fechar modal de autenticação ao clicar fora
         
         // Verificar autenticação antes de carregar vídeos
         const isAuthenticated = await checkAuth();
