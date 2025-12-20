@@ -9,6 +9,7 @@
 DROP FUNCTION IF EXISTS create_user_profile(UUID, TEXT, TEXT, TEXT);
 
 -- Função para criar perfil (bypass RLS)
+-- IMPORTANTE: Valida que o user_id corresponde ao usuário autenticado
 CREATE OR REPLACE FUNCTION create_user_profile(
     user_id UUID,
     user_username TEXT,
@@ -22,10 +23,32 @@ SET search_path = public
 AS $$
 DECLARE
     profile_data JSON;
+    current_user_id UUID;
 BEGIN
+    -- Obter ID do usuário autenticado
+    current_user_id := auth.uid();
+    
+    -- Validar que o user_id corresponde ao usuário autenticado
+    IF current_user_id IS NULL THEN
+        RAISE EXCEPTION 'Usuário não autenticado';
+    END IF;
+    
+    IF user_id != current_user_id THEN
+        RAISE EXCEPTION 'Não autorizado: você só pode criar/atualizar seu próprio perfil';
+    END IF;
+    
+    -- Validar que username não está vazio e tem tamanho adequado
+    IF user_username IS NULL OR LENGTH(TRIM(user_username)) < 3 THEN
+        RAISE EXCEPTION 'Username deve ter pelo menos 3 caracteres';
+    END IF;
+    
+    IF LENGTH(TRIM(user_username)) > 30 THEN
+        RAISE EXCEPTION 'Username deve ter no máximo 30 caracteres';
+    END IF;
+    
     -- Inserir ou atualizar perfil
     INSERT INTO profiles (id, username, avatar_url, email)
-    VALUES (user_id, user_username, user_avatar_url, user_email)
+    VALUES (user_id, TRIM(user_username), user_avatar_url, user_email)
     ON CONFLICT (id) DO UPDATE
     SET 
         username = EXCLUDED.username,

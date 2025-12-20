@@ -33,9 +33,77 @@
         updateInterval: null
     };
     
-    // Configuração do Supabase
-    const SUPABASE_URL = 'https://esvjyjnyrmysvylnszjd.supabase.co';
-    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVzdmp5am55cm15c3Z5bG5zempkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU3MzY2ODMsImV4cCI6MjA4MTMxMjY4M30.ZyEgF8y4cIdCPnlcfMOLt0fYMoZCJkXCdc6eqeF8xAA';
+    // Rate limiting para prevenir spam
+    const rateLimiting = {
+        comments: {
+            lastAction: 0,
+            actionCount: 0,
+            windowStart: 0,
+            MAX_ACTIONS: 5, // Máximo de 5 comentários
+            WINDOW_MS: 60000 // Por minuto (60 segundos)
+        },
+        likes: {
+            lastAction: 0,
+            actionCount: 0,
+            windowStart: 0,
+            MAX_ACTIONS: 10, // Máximo de 10 likes
+            WINDOW_MS: 60000 // Por minuto (60 segundos)
+        }
+    };
+    
+    // Função para verificar rate limit
+    function checkRateLimit(actionType) {
+        const limit = rateLimiting[actionType];
+        const now = Date.now();
+        
+        // Resetar contador se a janela de tempo expirou
+        if (now - limit.windowStart > limit.WINDOW_MS) {
+            limit.windowStart = now;
+            limit.actionCount = 0;
+        }
+        
+        // Verificar se excedeu o limite
+        if (limit.actionCount >= limit.MAX_ACTIONS) {
+            const remainingSeconds = Math.ceil((limit.WINDOW_MS - (now - limit.windowStart)) / 1000);
+            return {
+                allowed: false,
+                message: `Muitas ações. Tente novamente em ${remainingSeconds} segundos.`
+            };
+        }
+        
+        // Incrementar contador e atualizar último tempo
+        limit.actionCount++;
+        limit.lastAction = now;
+        
+        return { allowed: true };
+    }
+    
+    // Configuração de ambiente (para controlar logs em produção)
+    const IS_PRODUCTION = window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1';
+    
+    // Função para log seguro (não loga dados sensíveis em produção)
+    function safeLog(level, ...args) {
+        if (IS_PRODUCTION && (level === 'log' || level === 'info')) {
+            return; // Não logar info/logs em produção
+        }
+        // Em desenvolvimento ou para warnings/errors, sempre logar
+        if (console[level]) {
+            console[level](...args);
+        }
+    }
+    
+    // Configuração do Supabase (carregada de config.js)
+    // Verifica se SUPABASE_CONFIG está disponível (do config.js)
+    if (typeof SUPABASE_CONFIG === 'undefined') {
+        console.error('SUPABASE_CONFIG não encontrado. Certifique-se de que config.js está carregado antes de script.js');
+    }
+    const SUPABASE_URL = typeof SUPABASE_CONFIG !== 'undefined' && SUPABASE_CONFIG.url ? SUPABASE_CONFIG.url : '';
+    const SUPABASE_ANON_KEY = typeof SUPABASE_CONFIG !== 'undefined' && SUPABASE_CONFIG.anonKey ? SUPABASE_CONFIG.anonKey : '';
+    
+    // Validar configurações
+    if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+        console.error('Configurações do Supabase não foram carregadas corretamente. Verifique config.js');
+    }
     
     // Inicializar cliente Supabase com Auth
     function initSupabase() {
@@ -1284,14 +1352,61 @@ fullscreen.onclick = () => {
                     }
                     return;
                 }
+                
+                // Validação de segurança para uploads
+                const MAX_VIDEO_SIZE = 500 * 1024 * 1024; // 500MB
+                const MAX_THUMBNAIL_SIZE = 10 * 1024 * 1024; // 10MB
+                const ALLOWED_VIDEO_TYPES = ['video/mp4', 'video/webm', 'video/ogg', 'video/quicktime', 'video/x-msvideo'];
+                const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+                
+                const videoFile = videoFileInput.files[0];
+                const thumbnailFile = thumbnailFileInput.files[0];
+                
+                // Validar tamanho do vídeo
+                if (videoFile.size > MAX_VIDEO_SIZE) {
+                    if (uploadMessage) {
+                        uploadMessage.textContent = `O arquivo de vídeo é muito grande. Tamanho máximo: ${Math.round(MAX_VIDEO_SIZE / 1024 / 1024)}MB`;
+                        uploadMessage.className = "upload-message error";
+                        uploadMessage.style.display = "block";
+                    }
+                    return;
+                }
+                
+                // Validar tipo do vídeo
+                if (!ALLOWED_VIDEO_TYPES.includes(videoFile.type)) {
+                    if (uploadMessage) {
+                        uploadMessage.textContent = "Tipo de arquivo de vídeo não permitido. Use MP4, WebM ou OGG.";
+                        uploadMessage.className = "upload-message error";
+                        uploadMessage.style.display = "block";
+                    }
+                    return;
+                }
+                
+                // Validar tamanho da thumbnail
+                if (thumbnailFile.size > MAX_THUMBNAIL_SIZE) {
+                    if (uploadMessage) {
+                        uploadMessage.textContent = `A imagem de thumbnail é muito grande. Tamanho máximo: ${Math.round(MAX_THUMBNAIL_SIZE / 1024 / 1024)}MB`;
+                        uploadMessage.className = "upload-message error";
+                        uploadMessage.style.display = "block";
+                    }
+                    return;
+                }
+                
+                // Validar tipo da thumbnail
+                if (!ALLOWED_IMAGE_TYPES.includes(thumbnailFile.type)) {
+                    if (uploadMessage) {
+                        uploadMessage.textContent = "Tipo de imagem não permitido. Use JPG, PNG, GIF ou WebP.";
+                        uploadMessage.className = "upload-message error";
+                        uploadMessage.style.display = "block";
+                    }
+                    return;
+                }
 
                 if (uploadSubmitBtn) uploadSubmitBtn.disabled = true;
                 if (uploadProgress) uploadProgress.style.display = "block";
                 if (uploadMessage) uploadMessage.style.display = "none";
 
                 try {
-                    const videoFile = videoFileInput.files[0];
-                    const thumbnailFile = thumbnailFileInput.files[0];
                     const title = videoTitleInput ? videoTitleInput.value.trim() : "";
                     const duration = formatDuration(videoDurationSeconds);
 
@@ -1962,6 +2077,13 @@ fullscreen.onclick = () => {
     // Dar ou remover like
     async function toggleLike() {
         try {
+            // Verificar rate limiting
+            const rateCheck = checkRateLimit('likes');
+            if (!rateCheck.allowed) {
+                // Não mostrar alerta para likes, apenas ignorar silenciosamente
+                return;
+            }
+            
             // Não permitir likes em modo guest
             if (isGuestMode) {
                 showAuthModal();
@@ -2133,7 +2255,7 @@ fullscreen.onclick = () => {
             
             // Renderizar comentários
             if (commentsList) {
-                console.log('Renderizando comentários. Total:', totalComments, 'isGuestMode:', isGuestMode);
+                safeLog('log', 'Renderizando comentários. Total:', totalComments, 'isGuestMode:', isGuestMode);
                 if (totalComments === 0) {
                     const message = isGuestMode 
                         ? 'Nenhum comentário ainda.' 
@@ -2196,7 +2318,7 @@ fullscreen.onclick = () => {
                     if (profiles && profiles.length > 0) {
                         profiles.forEach(profile => {
                             profilesMap[profile.id] = profile;
-                            console.log(`Perfil mapeado: ${profile.id} -> ${profile.username}, avatar: ${profile.avatar_url}`);
+                            safeLog('log', `Perfil mapeado para ID: ${profile.id.substring(0, 8)}...`);
                         });
                     } else {
                         console.warn('Nenhum perfil encontrado para os user_ids:', userIds);
@@ -2227,9 +2349,9 @@ fullscreen.onclick = () => {
                             <div class="comment-item ${isOwnComment ? 'own-comment' : ''}" data-comment-id="${comment.id}">
                                 <div class="comment-avatar">
                                     ${avatarUrl 
-                                        ? `<img src="${escapeHtml(avatarUrl)}" alt="${escapeHtml(username)}" class="comment-avatar-img" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">` 
+                                        ? `<img src="${escapeHtml(sanitizeUrl(avatarUrl))}" alt="${escapeHtml(username)}" class="comment-avatar-img" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">` 
                                         : ''}
-                                    <div class="comment-avatar-placeholder" ${avatarUrl ? 'style="display:none;"' : ''}>${avatarInitial}</div>
+                                    <div class="comment-avatar-placeholder" ${avatarUrl ? 'style="display:none;"' : ''}>${escapeHtml(avatarInitial)}</div>
                                 </div>
                                 <div class="comment-content">
                                     <div class="comment-header">
@@ -2243,7 +2365,7 @@ fullscreen.onclick = () => {
                         `;
                     }).join('');
                     
-                    console.log('HTML dos comentários gerado. Primeiros 200 caracteres:', commentsList.innerHTML.substring(0, 200));
+                    safeLog('log', 'HTML dos comentários gerado. Tamanho:', commentsList.innerHTML.length);
                     
                     // Adicionar event listeners para botões de deletar (apenas se autenticado)
                     if (session && session.user) {
@@ -2287,16 +2409,39 @@ fullscreen.onclick = () => {
         }
     }
     
-    // Escapar HTML para prevenir XSS
+    // Função melhorada para escape HTML (proteção XSS)
     function escapeHtml(text) {
+        if (text == null || text === undefined) {
+            return '';
+        }
         const div = document.createElement('div');
-        div.textContent = text;
+        div.textContent = String(text);
         return div.innerHTML;
+    }
+    
+    // Função para sanitizar URLs (para avatares e imagens)
+    function sanitizeUrl(url) {
+        if (!url || typeof url !== 'string') {
+            return '';
+        }
+        // Apenas permitir URLs http, https ou data URLs de imagens
+        const urlPattern = /^(https?:\/\/|data:image\/)/i;
+        if (!urlPattern.test(url.trim())) {
+            return '';
+        }
+        return url.trim();
     }
     
     // Adicionar comentário
     async function addComment(videoId, commentText) {
         try {
+            // Verificar rate limiting
+            const rateCheck = checkRateLimit('comments');
+            if (!rateCheck.allowed) {
+                alert(rateCheck.message);
+                return;
+            }
+            
             // Não permitir comentários em modo guest
             if (isGuestMode) {
                 showAuthModal();
@@ -2316,17 +2461,21 @@ fullscreen.onclick = () => {
                 return;
             }
             
-            // Limpar espaços em branco
+            // Limpar espaços em branco e sanitizar
             const trimmedText = commentText.trim();
             if (trimmedText.length === 0) {
                 console.warn('Comentário vazio');
                 return;
             }
             
-            if (trimmedText.length > 500) {
-                console.warn('Comentário muito longo (máximo 500 caracteres)');
+            // Validar tamanho máximo do comentário (5000 caracteres)
+            if (trimmedText.length > 5000) {
+                alert('Comentário muito longo. Máximo de 5000 caracteres.');
                 return;
             }
+            
+            // Sanitizar texto do comentário (escape HTML)
+            const sanitizedText = escapeHtml(trimmedText);
             
             // Inserir comentário
             const { error: insertError } = await supabaseClient
@@ -2334,7 +2483,7 @@ fullscreen.onclick = () => {
                 .insert({
                     user_id: session.user.id,
                     video_id: videoId,
-                    comment_text: trimmedText
+                    comment_text: sanitizedText
                 });
             
             if (insertError) {
@@ -2685,8 +2834,22 @@ fullscreen.onclick = () => {
     
     // Registro
     async function handleRegister(email, username, password, confirmPassword, avatarFile) {
-        if (!username || username.trim().length < 3) {
+        // Validar username com regex (apenas letras, números, _ e -)
+        const usernameRegex = /^[a-zA-Z0-9_-]{3,30}$/;
+        const trimmedUsername = username ? username.trim() : '';
+        
+        if (!trimmedUsername || trimmedUsername.length < 3) {
             showAuthError("register", "O nome de usuário deve ter no mínimo 3 caracteres!");
+            return false;
+        }
+        
+        if (trimmedUsername.length > 30) {
+            showAuthError("register", "O nome de usuário deve ter no máximo 30 caracteres!");
+            return false;
+        }
+        
+        if (!usernameRegex.test(trimmedUsername)) {
+            showAuthError("register", "O nome de usuário só pode conter letras, números, _ e -");
             return false;
         }
         
@@ -2725,21 +2888,32 @@ fullscreen.onclick = () => {
         if (avatarFile && avatarFile.files && avatarFile.files[0]) {
             try {
                 const file = avatarFile.files[0];
-                const fileExt = file.name.split('.').pop();
-                const fileName = `${data.user.id}-${Date.now()}.${fileExt}`;
-                const filePath = `Avatars/${fileName}`;
                 
-                const { error: uploadError } = await supabaseClient.storage
-                    .from('v-p-player')
-                    .upload(filePath, file);
+                // Validação de segurança para avatar
+                const MAX_AVATAR_SIZE = 5 * 1024 * 1024; // 5MB
+                const ALLOWED_AVATAR_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
                 
-                if (uploadError) {
-                    console.error('Erro ao fazer upload do avatar:', uploadError);
+                if (file.size > MAX_AVATAR_SIZE) {
+                    console.warn('Avatar muito grande, ignorando upload');
+                } else if (!ALLOWED_AVATAR_TYPES.includes(file.type)) {
+                    console.warn('Tipo de arquivo de avatar não permitido, ignorando upload');
                 } else {
-                    const { data: urlData } = supabaseClient.storage
+                    const fileExt = file.name.split('.').pop();
+                    const fileName = `${data.user.id}-${Date.now()}.${fileExt}`;
+                    const filePath = `Avatars/${fileName}`;
+                    
+                    const { error: uploadError } = await supabaseClient.storage
                         .from('v-p-player')
-                        .getPublicUrl(filePath);
-                    avatarUrl = urlData.publicUrl;
+                        .upload(filePath, file);
+                    
+                    if (uploadError) {
+                        console.error('Erro ao fazer upload do avatar:', uploadError);
+                    } else {
+                        const { data: urlData } = supabaseClient.storage
+                            .from('v-p-player')
+                            .getPublicUrl(filePath);
+                        avatarUrl = urlData.publicUrl;
+                    }
                 }
             } catch (avatarError) {
                 console.error('Erro ao processar avatar:', avatarError);
@@ -2747,7 +2921,7 @@ fullscreen.onclick = () => {
         }
         
         // Criar perfil do usuário
-        console.log('Criando perfil para usuário:', data.user.id, 'username:', username.trim(), 'avatar_url:', avatarUrl);
+        console.log('Criando perfil para usuário:', data.user.id, 'username:', trimmedUsername, 'avatar_url:', avatarUrl);
         
         // Tentar usar função RPC primeiro (bypass RLS)
         let profileData = null;
@@ -2756,7 +2930,7 @@ fullscreen.onclick = () => {
         try {
             const { data: rpcData, error: rpcError } = await supabaseClient.rpc('create_user_profile', {
                 user_id: data.user.id,
-                user_username: username.trim(),
+                user_username: trimmedUsername,
                 user_avatar_url: avatarUrl,
                 user_email: email
             });
@@ -2768,7 +2942,7 @@ fullscreen.onclick = () => {
                     .from('profiles')
                     .insert({
                         id: data.user.id,
-                        username: username.trim(),
+                        username: trimmedUsername,
                         avatar_url: avatarUrl,
                         email: email
                     })
@@ -2788,7 +2962,7 @@ fullscreen.onclick = () => {
                 .from('profiles')
                 .insert({
                     id: data.user.id,
-                    username: username.trim(),
+                    username: trimmedUsername,
                     avatar_url: avatarUrl,
                     email: email
                 })
@@ -2813,7 +2987,7 @@ fullscreen.onclick = () => {
                 console.log('Tentando criar perfil novamente via RPC...');
                 const { data: retryRpcData, error: retryRpcError } = await supabaseClient.rpc('create_user_profile', {
                     user_id: data.user.id,
-                    user_username: username.trim(),
+                    user_username: trimmedUsername, // Usar variável já validada
                     user_avatar_url: avatarUrl,
                     user_email: email
                 });

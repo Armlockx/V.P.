@@ -69,13 +69,33 @@ DROP POLICY IF EXISTS "Todos podem atualizar estatísticas" ON videos;
 -- Habilitar RLS na tabela videos se ainda não estiver habilitado
 ALTER TABLE videos ENABLE ROW LEVEL SECURITY;
 
--- Criar política que permite UPDATE de views e watch_time para TODOS (autenticados e anônimos)
-CREATE POLICY "Todos podem atualizar estatísticas"
-ON videos
-FOR UPDATE
-TO public
-USING (true)
-WITH CHECK (true);
+-- IMPORTANTE: Política RLS de UPDATE removida para maior segurança
+-- A atualização de estatísticas (views e watch_time) deve ser feita APENAS via funções RPC:
+--   - increment_video_views(video_id)
+--   - increment_video_watch_time(video_id, seconds)
+-- 
+-- As funções RPC usam SECURITY DEFINER e bypassam RLS de forma controlada,
+-- garantindo que apenas incrementos sejam permitidos, não atualizações arbitrárias.
+--
+-- REMOVER política permissiva se existir (execute no SQL Editor do Supabase):
+-- DROP POLICY IF EXISTS "Todos podem atualizar estatísticas" ON videos;
+--
+-- Se você precisa de uma política RLS como fallback, use uma política mais restritiva:
+-- CREATE POLICY "Todos podem atualizar apenas views e watch_time"
+-- ON videos
+-- FOR UPDATE
+-- TO public
+-- USING (true)
+-- WITH CHECK (
+--     -- Garantir que apenas views e watch_time possam ser atualizados
+--     -- (outros campos devem permanecer iguais)
+--     OLD.title = NEW.title AND
+--     OLD.url = NEW.url AND
+--     OLD.thumbnail_url = NEW.thumbnail_url AND
+--     OLD.duration = NEW.duration AND
+--     OLD.created_at = NEW.created_at AND
+--     OLD.user_id = NEW.user_id
+-- );
 
 -- Garantir que todos podem ler a tabela videos (necessário para SELECT)
 DROP POLICY IF EXISTS "Todos podem ler videos" ON videos;
