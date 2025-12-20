@@ -29,6 +29,8 @@
         viewIncremented: false,
         updateInterval: null
     };
+    let imageObserver = null; // Intersection Observer para lazy loading de imagens
+    let commentsLoaded = {}; // Rastrear quais vídeos já tiveram comentários carregados
     
     // Configuração do Supabase
     const SUPABASE_URL = 'https://esvjyjnyrmysvylnszjd.supabase.co';
@@ -211,19 +213,84 @@
         // Mostrar loader
         showLoader("🕐");
         
+        // Carregar apenas o vídeo atual (lazy loading)
         video.src = selectedVideo.url;
         video.load();
+        
+        // Pré-carregar apenas metadados do próximo vídeo (otimização)
+        preloadNextVideo(index);
+        
         updateQueueDisplay();
         updateVideoTitle();
         
-        // Carregar likes do vídeo
+        // Carregar likes do vídeo (sempre necessário para mostrar contador)
         loadVideoLikes(selectedVideo.id);
         
-        // Carregar comentários do vídeo
-        loadVideoComments(selectedVideo.id);
+        // Carregar apenas contador de comentários (não os comentários completos)
+        // Os comentários completos serão carregados apenas quando o modal for aberto
+        loadCommentsCount(selectedVideo.id);
         
         if (!video.paused) {
             video.play();
+        }
+    }
+    
+    // Pré-carregar metadados do próximo vídeo na fila
+    function preloadNextVideo(currentIndex) {
+        const nextIndex = currentIndex + 1;
+        if (nextIndex < videoList.length && videoList[nextIndex]) {
+            const nextVideo = videoList[nextIndex];
+            // Criar elemento de vídeo oculto para pré-carregar apenas metadados
+            const preloadVideo = document.createElement('video');
+            preloadVideo.preload = 'metadata'; // Apenas metadados, não o vídeo completo
+            preloadVideo.src = nextVideo.url;
+            preloadVideo.style.display = 'none';
+            document.body.appendChild(preloadVideo);
+            
+            // Remover após carregar metadados
+            preloadVideo.addEventListener('loadedmetadata', () => {
+                setTimeout(() => {
+                    if (preloadVideo.parentNode) {
+                        preloadVideo.parentNode.removeChild(preloadVideo);
+                    }
+                }, 1000);
+            });
+        }
+    }
+    
+    // Carregar apenas o contador de comentários (otimização)
+    async function loadCommentsCount(videoId) {
+        try {
+            if (!videoId || !supabaseClient) {
+                if (commentsCount) commentsCount.textContent = '0';
+                return;
+            }
+            
+            // Obter sessão do usuário
+            const { data: { session } } = await supabaseClient.auth.getSession();
+            if (!session) {
+                if (commentsCount) commentsCount.textContent = '0';
+                return;
+            }
+            
+            // Buscar apenas a contagem de comentários (mais eficiente)
+            const { count, error } = await supabaseClient
+                .from('video_comments')
+                .select('*', { count: 'exact', head: true })
+                .eq('video_id', videoId);
+            
+            if (error) {
+                console.error('Erro ao buscar contagem de comentários:', error);
+                if (commentsCount) commentsCount.textContent = '0';
+                return;
+            }
+            
+            // Atualizar apenas o contador
+            const totalComments = count || 0;
+            if (commentsCount) commentsCount.textContent = totalComments.toString();
+        } catch (error) {
+            console.error('Erro ao carregar contagem de comentários:', error);
+            if (commentsCount) commentsCount.textContent = '0';
         }
     }
 
@@ -254,6 +321,39 @@
         }
     }
 
+    // Inicializar Intersection Observer para lazy loading de imagens
+    function initImageLazyLoading() {
+        // Verificar se o navegador suporta Intersection Observer
+        if (!('IntersectionObserver' in window)) {
+            console.warn('Intersection Observer não suportado, usando fallback');
+            return;
+        }
+        
+        // Criar observer com opções otimizadas
+        imageObserver = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    const img = entry.target;
+                    const dataSrc = img.getAttribute('data-src');
+                    
+                    if (dataSrc) {
+                        // Carregar imagem
+                        img.src = dataSrc;
+                        img.removeAttribute('data-src');
+                        img.classList.add('loaded');
+                        
+                        // Remover observer após carregar
+                        imageObserver.unobserve(img);
+                    }
+                }
+            });
+        }, {
+            root: queueList, // Container com scroll
+            rootMargin: '50px', // Começar a carregar 50px antes de aparecer
+            threshold: 0.01 // Carregar quando 1% estiver visível
+        });
+    }
+    
     function updateQueueDisplay() {
         if (!queueList) return;
         
@@ -276,12 +376,13 @@
             const views = videoItem.views || 0;
             const viewsText = views === 0 ? '0 views' : views === 1 ? '1 view' : `${views.toLocaleString()} views`;
             
-            // Criar HTML da thumbnail com tempo no canto inferior direito
+            // Criar HTML da thumbnail com lazy loading
             let thumbnailHtml;
             const duration = videoItem.duration || '0:00';
             if (videoItem.thumbnail) {
+                // Usar data-src para lazy loading, src vazio ou placeholder
                 thumbnailHtml = `
-                    <img src="${videoItem.thumbnail}" alt="${videoItem.title}" onerror="this.onerror=null; this.style.display='none'; this.parentElement.querySelector('.thumbnail-duration')?.remove(); this.parentElement.innerHTML='🎬';" />
+                    <img data-src="${videoItem.thumbnail}" alt="${videoItem.title}" class="lazy-thumbnail" loading="lazy" onerror="this.onerror=null; this.style.display='none'; this.parentElement.querySelector('.thumbnail-duration')?.remove(); this.parentElement.innerHTML='🎬';" />
                     <div class="thumbnail-duration">${duration}</div>
                 `;
             } else {
@@ -310,6 +411,21 @@
             };
             
             queueList.appendChild(listItem);
+            
+            // Observar imagem para lazy loading (se o observer estiver disponível)
+            if (imageObserver) {
+                const img = listItem.querySelector('.lazy-thumbnail');
+                if (img) {
+                    imageObserver.observe(img);
+                }
+            } else {
+                // Fallback: carregar imediatamente se observer não estiver disponível
+                const img = listItem.querySelector('.lazy-thumbnail');
+                if (img && img.getAttribute('data-src')) {
+                    img.src = img.getAttribute('data-src');
+                    img.removeAttribute('data-src');
+                }
+            }
         });
         
         updateQueueCount();
@@ -1976,6 +2092,9 @@ fullscreen.onclick = () => {
             const totalComments = comments ? comments.length : 0;
             if (commentsCount) commentsCount.textContent = totalComments.toString();
             
+            // Marcar como carregado
+            commentsLoaded[videoId] = true;
+            
             // Renderizar comentários
             if (commentsList) {
                 if (totalComments === 0) {
@@ -2091,8 +2210,12 @@ fullscreen.onclick = () => {
             } else {
                 // Limpar input
                 if (commentInput) commentInput.value = '';
-                // Recarregar comentários
+                // Invalidar cache e recarregar comentários
+                delete commentsLoaded[videoId];
                 await loadVideoComments(videoId);
+                commentsLoaded[videoId] = true;
+                // Atualizar contador também
+                await loadCommentsCount(videoId);
             }
         } catch (error) {
             console.error('Erro ao adicionar comentário:', error);
@@ -2126,8 +2249,12 @@ fullscreen.onclick = () => {
                 console.error('Erro ao deletar comentário:', deleteError);
                 alert('Erro ao deletar comentário. Tente novamente.');
             } else {
-                // Recarregar comentários
+                // Invalidar cache e recarregar comentários
+                delete commentsLoaded[videoId];
                 await loadVideoComments(videoId);
+                commentsLoaded[videoId] = true;
+                // Atualizar contador também
+                await loadCommentsCount(videoId);
             }
         } catch (error) {
             console.error('Erro ao deletar comentário:', error);
@@ -2140,11 +2267,19 @@ fullscreen.onclick = () => {
         if (commentsModal) {
             commentsModal.classList.add("active");
             document.body.style.overflow = "hidden";
-            // Carregar comentários do vídeo atual
+            // Carregar comentários do vídeo atual apenas quando o modal é aberto (lazy loading)
             if (videoList.length > 0 && currentVideoIndex >= 0 && currentVideoIndex < videoList.length) {
                 const currentVideo = videoList[currentVideoIndex];
                 if (currentVideo && currentVideo.id) {
-                    loadVideoComments(currentVideo.id);
+                    // Só carregar comentários completos se ainda não foram carregados ou se o vídeo mudou
+                    const videoId = currentVideo.id;
+                    if (!commentsLoaded[videoId]) {
+                        loadVideoComments(videoId);
+                        commentsLoaded[videoId] = true;
+                    } else {
+                        // Se já foram carregados, apenas recarregar para garantir dados atualizados
+                        loadVideoComments(videoId);
+                    }
                 }
             }
         }
@@ -2481,6 +2616,9 @@ fullscreen.onclick = () => {
         if (typeof supabase !== 'undefined') {
             initSupabase();
         }
+        
+        // Inicializar lazy loading de imagens
+        initImageLazyLoading();
         
         initEventListeners();
         initKeyboardShortcuts(); // Inicializar atalhos de teclado

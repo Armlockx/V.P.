@@ -932,6 +932,22 @@ input[type="range"]:hover::-moz-range-thumb {
     height: 100%;
     object-fit: cover;
     border-radius: 6px;
+    transition: opacity 0.3s ease;
+}
+
+/* Lazy loading: imagem começa transparente e aparece quando carrega */
+.queue-item-thumbnail img.lazy-thumbnail {
+    opacity: 0;
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.05));
+}
+
+.queue-item-thumbnail img.lazy-thumbnail.loaded {
+    opacity: 1;
+}
+
+/* Placeholder enquanto carrega */
+.queue-item-thumbnail img.lazy-thumbnail:not(.loaded) {
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.15), rgba(255, 255, 255, 0.05));
 }
 
 .thumbnail-duration {
