@@ -17,6 +17,7 @@
     let isGuestMode = false; // Flag para modo guest
     let likeBtn, likeCount; // Botão de like e contador
     let commentsBtn, commentsCount, commentsModal, commentsCloseBtn, commentsList, commentInput, commentSubmitBtn; // Elementos de comentários
+    let catBtn, catModal, catCloseBtn, catGenerateBtn, catImage, catLoader, catImageContainer; // Elementos do gerador de gatos
     let videoList = [];
     let currentVideoIndex = 0;
     let controlsTimeout = null;
@@ -162,6 +163,15 @@
         commentInput = document.getElementById("commentInput"); // Input de comentário
         commentSubmitBtn = document.getElementById("commentSubmitBtn"); // Botão de enviar comentário
         
+        // Elementos do Gerador de Gatos
+        catBtn = document.getElementById("catBtn");
+        catModal = document.getElementById("catModal");
+        catCloseBtn = document.getElementById("catCloseBtn");
+        catGenerateBtn = document.getElementById("catGenerateBtn");
+        catImage = document.getElementById("catImage");
+        catLoader = document.getElementById("catLoader");
+        catImageContainer = document.getElementById("catImageContainer");
+
         // Verificar se todos os elementos foram encontrados
         if (!video || !playPause || !player) {
             console.error('Elementos do DOM não encontrados');
@@ -3232,6 +3242,71 @@ fullscreen.onclick = () => {
         });
     }
 
+    // Inicializar Gerador de Gatos
+    function initCat() {
+        if (!catBtn || !catModal || !catCloseBtn || !catGenerateBtn) return;
+
+        // Abrir modal
+        catBtn.onclick = (e) => {
+            e.stopPropagation();
+            catModal.classList.add("active");
+            if (!catImage.src || catImage.style.display === "none") {
+                fetchCatImage();
+            }
+        };
+
+        // Fechar modal
+        catCloseBtn.onclick = () => {
+            catModal.classList.remove("active");
+        };
+
+        // Fechar ao clicar fora
+        catModal.onclick = (e) => {
+            if (e.target === catModal) {
+                catModal.classList.remove("active");
+            }
+        };
+
+        // Gerar novo gato
+        catGenerateBtn.onclick = fetchCatImage;
+    }
+
+    // Buscar imagem de gato
+    async function fetchCatImage() {
+        if (!catImage || !catLoader) return;
+
+        catLoader.style.display = "block";
+        catLoader.textContent = "Carregando gatinho...";
+        catImage.style.display = "none";
+        
+        try {
+            const response = await fetch('https://api.thecatapi.com/v1/images/search');
+            const data = await response.json();
+            
+            if (data && data.length > 0) {
+                const imageUrl = data[0].url;
+                
+                // Pré-carregar imagem
+                const img = new Image();
+                img.onload = () => {
+                    catImage.src = imageUrl;
+                    catLoader.style.display = "none";
+                    catImage.style.display = "block";
+                };
+                img.onerror = () => {
+                    catLoader.textContent = "Erro ao carregar a imagem.";
+                };
+                img.src = imageUrl;
+                
+            } else {
+                catLoader.textContent = "Não foi possível encontrar um gatinho :(";
+            }
+        } catch (error) {
+            console.error("Erro ao buscar gato:", error);
+            catLoader.textContent = "Erro ao carregar gatinho. Tente novamente.";
+        }
+    }
+
     // Função principal de inicialização
     async function init() {
         if (!initDOMElements()) {
@@ -3252,6 +3327,7 @@ fullscreen.onclick = () => {
         initVisibilityHandlers(); // Gerenciar visibilidade da aba
         initCommentsModalClickOutside(); // Fechar modal de comentários ao clicar fora
         initAuthModalClickOutside(); // Fechar modal de autenticação ao clicar fora
+        initCat(); // Inicializar gerador de gatos
         
         // Verificar autenticação antes de carregar vídeos
         const isAuthenticated = await checkAuth();

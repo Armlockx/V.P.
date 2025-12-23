@@ -5,7 +5,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <!-- Content Security Policy para prevenir XSS e ataques de injeção -->
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://esvjyjnyrmysvylnszjd.supabase.co; style-src 'self' 'unsafe-inline'; img-src 'self' data: https: blob:; media-src 'self' https: blob:; connect-src 'self' https://esvjyjnyrmysvylnszjd.supabase.co; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self';">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://esvjyjnyrmysvylnszjd.supabase.co; style-src 'self' 'unsafe-inline'; img-src 'self' data: https: blob:; media-src 'self' https: blob:; connect-src 'self' https://esvjyjnyrmysvylnszjd.supabase.co https://api.thecatapi.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self';">
     <title>V.P. Player</title>
     <link rel="stylesheet" href="style.css" />
     <link rel="icon" href="logoIcon.png">
@@ -74,6 +74,10 @@
                 <button class="comments-btn" id="commentsBtn" title="Comentários">
                     <span class="comments-icon">💬</span>
                     <span class="comments-count" id="commentsCount">0</span>
+                </button>
+
+                <button class="cat-btn" id="catBtn" title="Gerar Gato">
+                    <span class="cat-icon">🐱</span>
                 </button>
 
                 <button class="queue-toggle-btn" id="queueToggle" title="Mostrar fila">
@@ -259,6 +263,23 @@
                 <button type="submit" class="auth-submit-btn">Registrar</button>
                 <button type="button" class="auth-guest-btn" id="guestLoginBtnRegister">Entrar como convidado</button>
             </form>
+        </div>
+    </div>
+
+    <!-- Modal de Gato -->
+    <div class="cat-modal" id="catModal">
+        <div class="cat-modal-content">
+            <div class="cat-modal-header">
+                <h2>Gerador de Gatos</h2>
+                <button class="cat-close-btn" id="catCloseBtn">×</button>
+            </div>
+            <div class="cat-body">
+                <div class="cat-image-container" id="catImageContainer">
+                    <div class="cat-loader" id="catLoader">Carregando gatinho...</div>
+                    <img id="catImage" src="" alt="Gato aleatório" style="display: none;">
+                </div>
+                <button class="cat-generate-btn" id="catGenerateBtn">Gerar Outro Gato</button>
+            </div>
         </div>
     </div>
 
