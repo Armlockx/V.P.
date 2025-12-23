@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cat Image Generator</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            max-width: 600px;
+            width: 100%;
+            text-align: center;
+        }
+
+        h1 {
+            color: #333;
+            margin-bottom: 30px;
+            font-size: 2.5em;
+        }
+
+        .cat-image-container {
+            margin: 30px 0;
+            border-radius: 15px;
+            overflow: hidden;
+            background: #f5f5f5;
+            min-height: 400px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+        }
+
+        .cat-image {
+            max-width: 100%;
+            max-height: 500px;
+            border-radius: 15px;
+            display: none;
+        }
+
+        .cat-image.loaded {
+            display: block;
+        }
+
+        .loading {
+            color: #667eea;
+            font-size: 1.2em;
+            padding: 20px;
+        }
+
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+            margin: 20px auto;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 15px 40px;
+            font-size: 1.1em;
+            border-radius: 50px;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            font-weight: 600;
+            margin-top: 20px;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.4);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .error {
+            color: #e74c3c;
+            padding: 20px;
+            background: #fee;
+            border-radius: 10px;
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🐱 Cat Image Generator</h1>
+        <div class="cat-image-container" id="imageContainer">
+            <div class="loading">
+                <div class="spinner"></div>
+                <p>Loading a cute cat...</p>
+            </div>
+        </div>
+        <button id="generateBtn" onclick="generateCat()">Generate New Cat 🐾</button>
+    </div>
+
+    <script>
+        async function generateCat() {
+            const container = document.getElementById('imageContainer');
+            const btn = document.getElementById('generateBtn');
+            
+            // Show loading state
+            container.innerHTML = `
+                <div class="loading">
+                    <div class="spinner"></div>
+                    <p>Loading a cute cat...</p>
+                </div>
+            `;
+            btn.disabled = true;
+
+            try {
+                // Use The Cat API to get a random cat image
+                const response = await fetch('https://api.thecatapi.com/v1/images/search?size=full');
+                
+                if (!response.ok) {
+                    throw new Error('Failed to fetch cat image');
+                }
+
+                const data = await response.json();
+                const imageUrl = data[0].url;
+
+                // Create and display the image
+                const img = document.createElement('img');
+                img.src = imageUrl;
+                img.alt = 'A cute cat';
+                img.className = 'cat-image';
+                
+                img.onload = () => {
+                    img.classList.add('loaded');
+                    container.innerHTML = '';
+                    container.appendChild(img);
+                    btn.disabled = false;
+                };
+
+                img.onerror = () => {
+                    throw new Error('Failed to load image');
+                };
+
+            } catch (error) {
+                container.innerHTML = `
+                    <div class="error">
+                        <p>😿 Oops! Couldn't load a cat image.</p>
+                        <p style="font-size: 0.9em; margin-top: 10px;">Error: ${error.message}</p>
+                        <p style="font-size: 0.8em; margin-top: 10px; color: #666;">Try again or check your internet connection.</p>
+                    </div>
+                `;
+                btn.disabled = false;
+            }
+        }
+
+        // Generate a cat image on page load
+        window.onload = generateCat;
+    </script>
+</body>
+</html>
