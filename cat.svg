@@ -1,0 +1,72 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" width="400" height="400">
+  <!-- Background -->
+  <rect width="400" height="400" fill="#f0e6d3"/>
+  
+  <!-- Cat Body -->
+  <ellipse cx="200" cy="300" rx="100" ry="80" fill="#ff9f43"/>
+  
+  <!-- Cat Head -->
+  <circle cx="200" cy="180" r="90" fill="#ff9f43"/>
+  
+  <!-- Left Ear -->
+  <polygon points="120,120 140,40 180,110" fill="#ff9f43"/>
+  <polygon points="130,110 145,60 165,105" fill="#ffb8b8"/>
+  
+  <!-- Right Ear -->
+  <polygon points="280,120 260,40 220,110" fill="#ff9f43"/>
+  <polygon points="270,110 255,60 235,105" fill="#ffb8b8"/>
+  
+  <!-- Face markings - lighter patches -->
+  <ellipse cx="200" cy="200" rx="60" ry="50" fill="#ffc985"/>
+  
+  <!-- Left Eye -->
+  <ellipse cx="160" cy="170" rx="25" ry="28" fill="white"/>
+  <ellipse cx="162" cy="172" rx="15" ry="18" fill="#2d3436"/>
+  <circle cx="158" cy="166" r="6" fill="white"/>
+  
+  <!-- Right Eye -->
+  <ellipse cx="240" cy="170" rx="25" ry="28" fill="white"/>
+  <ellipse cx="238" cy="172" rx="15" ry="18" fill="#2d3436"/>
+  <circle cx="234" cy="166" r="6" fill="white"/>
+  
+  <!-- Nose -->
+  <path d="M200 200 L190 218 L210 218 Z" fill="#ff6b6b"/>
+  
+  <!-- Mouth -->
+  <path d="M200 218 Q200 235 185 240" stroke="#2d3436" stroke-width="3" fill="none" stroke-linecap="round"/>
+  <path d="M200 218 Q200 235 215 240" stroke="#2d3436" stroke-width="3" fill="none" stroke-linecap="round"/>
+  
+  <!-- Whiskers Left -->
+  <line x1="100" y1="200" x2="155" y2="210" stroke="#2d3436" stroke-width="2" stroke-linecap="round"/>
+  <line x1="95" y1="220" x2="155" y2="220" stroke="#2d3436" stroke-width="2" stroke-linecap="round"/>
+  <line x1="100" y1="240" x2="155" y2="230" stroke="#2d3436" stroke-width="2" stroke-linecap="round"/>
+  
+  <!-- Whiskers Right -->
+  <line x1="300" y1="200" x2="245" y2="210" stroke="#2d3436" stroke-width="2" stroke-linecap="round"/>
+  <line x1="305" y1="220" x2="245" y2="220" stroke="#2d3436" stroke-width="2" stroke-linecap="round"/>
+  <line x1="300" y1="240" x2="245" y2="230" stroke="#2d3436" stroke-width="2" stroke-linecap="round"/>
+  
+  <!-- Front Paws -->
+  <ellipse cx="150" cy="360" rx="30" ry="20" fill="#ff9f43"/>
+  <ellipse cx="250" cy="360" rx="30" ry="20" fill="#ff9f43"/>
+  
+  <!-- Paw details -->
+  <circle cx="140" cy="365" r="6" fill="#ffc985"/>
+  <circle cx="150" cy="368" r="6" fill="#ffc985"/>
+  <circle cx="160" cy="365" r="6" fill="#ffc985"/>
+  
+  <circle cx="240" cy="365" r="6" fill="#ffc985"/>
+  <circle cx="250" cy="368" r="6" fill="#ffc985"/>
+  <circle cx="260" cy="365" r="6" fill="#ffc985"/>
+  
+  <!-- Tail -->
+  <path d="M300 300 Q350 280 360 240 Q370 200 340 180" stroke="#ff9f43" stroke-width="25" fill="none" stroke-linecap="round"/>
+  
+  <!-- Blush marks -->
+  <ellipse cx="130" cy="210" rx="15" ry="8" fill="#ffb8b8" opacity="0.6"/>
+  <ellipse cx="270" cy="210" rx="15" ry="8" fill="#ffb8b8" opacity="0.6"/>
+  
+  <!-- Stripes on forehead -->
+  <path d="M180 130 Q200 145 220 130" stroke="#e17055" stroke-width="4" fill="none" stroke-linecap="round"/>
+  <path d="M175 145 Q200 160 225 145" stroke="#e17055" stroke-width="4" fill="none" stroke-linecap="round"/>
+</svg>
