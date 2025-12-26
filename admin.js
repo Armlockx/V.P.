@@ -16,6 +16,7 @@
     const adminUserInfo = document.getElementById('adminUserInfo');
     const adminVideosList = document.getElementById('adminVideosList');
     const adminUsersList = document.getElementById('adminUsersList');
+    const adminAdminsList = document.getElementById('adminAdminsList');
     const adminStatsGrid = document.getElementById('adminStatsGrid');
     const refreshVideosBtn = document.getElementById('refreshVideosBtn');
     const refreshUsersBtn = document.getElementById('refreshUsersBtn');
@@ -404,35 +405,68 @@
     // Excluir vídeo selecionado
     async function deleteSelectedVideo() {
         const selectedRadio = document.querySelector('input[name="selectedVideo"]:checked');
-        if (!selectedRadio) return;
+        if (!selectedRadio) {
+            alert('Por favor, selecione um vídeo para excluir.');
+            return;
+        }
 
         const videoId = selectedRadio.value;
-        const videoTitle = selectedRadio.closest('.admin-video-item').querySelector('h4').textContent;
+        const videoItem = selectedRadio.closest('.admin-video-item');
+        if (!videoItem) {
+            alert('Erro ao encontrar o item do vídeo.');
+            return;
+        }
+
+        const videoTitle = videoItem.querySelector('h4')?.textContent || 'vídeo';
 
         if (!confirm(`Tem certeza que deseja excluir o vídeo "${videoTitle}"?\n\nEsta ação não pode ser desfeita.`)) {
             return;
         }
 
         try {
-            const { error } = await supabaseClient
-                .from('videos')
-                .delete()
-                .eq('id', videoId);
+            console.log('Tentando excluir vídeo com ID:', videoId);
+            
+            // Tentar usar função RPC primeiro (mais seguro)
+            const { data: rpcData, error: rpcError } = await supabaseClient.rpc('delete_video', {
+                video_id: videoId
+            });
+            
+            if (rpcError) {
+                console.warn('RPC não disponível, tentando DELETE direto:', rpcError);
+                
+                // Fallback: tentar DELETE direto
+                const { data, error } = await supabaseClient
+                    .from('videos')
+                    .delete()
+                    .eq('id', videoId)
+                    .select();
 
-            if (error) {
-                console.error('Erro ao excluir vídeo:', error);
-                alert('Erro ao excluir vídeo. Tente novamente.');
-                return;
+                if (error) {
+                    console.error('Erro ao excluir vídeo:', error);
+                    alert('Erro ao excluir vídeo: ' + (error.message || 'Erro desconhecido') + '\n\nCertifique-se de que você tem permissões de administrador e que a política RLS está configurada corretamente.');
+                    return;
+                }
+
+                console.log('Vídeo excluído com sucesso (DELETE direto):', data);
+            } else {
+                console.log('Vídeo excluído com sucesso (RPC):', rpcData);
             }
-
-            alert('Vídeo excluído com sucesso!');
+            
+            // Ocultar preview
             hideVideoPreview();
-            loadVideos(videosSearchInput?.value || '');
+            
+            // Desabilitar botões
             deleteVideoBtn.disabled = true;
             editVideoBtn.disabled = true;
+            
+            // Recarregar lista de vídeos
+            const searchTerm = videosSearchInput?.value || '';
+            await loadVideos(searchTerm);
+            
+            alert('Vídeo excluído com sucesso!');
         } catch (error) {
             console.error('Erro ao excluir vídeo:', error);
-            alert('Erro ao excluir vídeo. Tente novamente.');
+            alert('Erro ao excluir vídeo: ' + (error.message || 'Erro desconhecido'));
         }
     }
 
@@ -453,15 +487,18 @@
             if (error) {
                 console.error('Erro ao carregar usuários:', error);
                 adminUsersList.innerHTML = '<p class="admin-error">Erro ao carregar usuários.</p>';
+                if (adminAdminsList) {
+                    adminAdminsList.innerHTML = '<p class="admin-error">Erro ao carregar usuários.</p>';
+                }
                 return;
             }
 
-            if (!users || users.length === 0) {
-                adminUsersList.innerHTML = '<p class="admin-empty">Nenhum usuário encontrado.</p>';
-                return;
-            }
+            // Separar usuários normais e administradores
+            const normalUsers = users.filter(user => !(user.is_admin || user.admin));
+            const adminUsers = users.filter(user => (user.is_admin || user.admin));
 
-            adminUsersList.innerHTML = users.map(user => `
+            // Função para renderizar um usuário
+            const renderUser = (user) => `
                 <div class="admin-user-item">
                     <div class="admin-user-item-avatar">
                         ${user.avatar_url 
@@ -482,7 +519,23 @@
                         </p>
                     </div>
                 </div>
-            `).join('');
+            `;
+
+            // Renderizar usuários normais
+            if (normalUsers.length === 0) {
+                adminUsersList.innerHTML = '<p class="admin-empty">Nenhum usuário encontrado.</p>';
+            } else {
+                adminUsersList.innerHTML = normalUsers.map(renderUser).join('');
+            }
+
+            // Renderizar administradores
+            if (adminAdminsList) {
+                if (adminUsers.length === 0) {
+                    adminAdminsList.innerHTML = '<p class="admin-empty">Nenhum administrador encontrado.</p>';
+                } else {
+                    adminAdminsList.innerHTML = adminUsers.map(renderUser).join('');
+                }
+            }
         } catch (error) {
             console.error('Erro ao carregar usuários:', error);
             adminUsersList.innerHTML = '<p class="admin-error">Erro ao carregar usuários.</p>';

@@ -125,8 +125,19 @@
                     <input type="text" id="usersSearchInput" class="admin-search-input" placeholder="Buscar usuários...">
                     <button class="admin-btn admin-btn-primary" id="refreshUsersBtn">Atualizar Lista</button>
                 </div>
-                <div class="admin-users-list" id="adminUsersList">
-                    <!-- Users list will be loaded here -->
+                <div class="admin-users-container">
+                    <div class="admin-users-column">
+                        <h3 class="admin-users-column-title">👤 Usuários</h3>
+                        <div class="admin-users-list" id="adminUsersList">
+                            <!-- Normal users list will be loaded here -->
+                        </div>
+                    </div>
+                    <div class="admin-users-column">
+                        <h3 class="admin-users-column-title">👑 Administradores</h3>
+                        <div class="admin-users-list" id="adminAdminsList">
+                            <!-- Admins list will be loaded here -->
+                        </div>
+                    </div>
                 </div>
             </section>
 
