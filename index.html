@@ -21,6 +21,14 @@
 
         <div class="video-title" id="videoTitle"></div>
         
+        <!-- Botão de Admin -->
+        <button class="admin-btn-player" id="adminBtn" title="Painel Admin" style="display: none;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+                <path d="M2 17l10 5 10-5M2 12l10 5 10-5"/>
+            </svg>
+        </button>
+        
         <!-- Botão de Logout -->
         <button class="logout-btn" id="logoutBtn" title="Sair">
             <img src="logoutIcon.png" alt="Logout" />
@@ -151,17 +159,15 @@
             </div>
             <button id="queueClose" class="close-btn" title="Fechar">×</button>
         </div>
-        <div class="queue-search">
-            <input type="text" id="queueSearch" placeholder="Buscar na fila..." />
+        <div class="queue-actions-bar">
+            <input type="text" id="queueSearch" class="queue-search-input" placeholder="Buscar..." />
+            <button class="queue-action-btn queue-upload-btn" id="uploadBtn" title="Adicionar vídeo">
+                <span class="queue-action-icon">+</span>
+            </button>
+            <button class="queue-action-btn queue-stats-btn" id="statsBtn" title="Estatísticas">
+                <span class="queue-action-icon">📊</span>
+            </button>
         </div>
-        <button class="upload-btn-in-menu" id="uploadBtn" title="Adicionar vídeo">
-            <span class="upload-btn-icon">+</span>
-            <span class="upload-btn-text">Adicionar Vídeo</span>
-        </button>
-        <button class="stats-btn-in-menu" id="statsBtn" title="Estatísticas">
-            <span class="stats-btn-icon">📊</span>
-            <span class="stats-btn-text">Estatísticas</span>
-        </button>
         <ul class="queue-list" id="queueList">
             <!-- Itens da fila serão adicionados dinamicamente -->
         </ul>
@@ -266,8 +272,8 @@
     <div class="guest-banner" id="guestBanner">
         <div class="guest-banner-content">
             <span class="guest-banner-icon">👤</span>
-            <span class="guest-banner-text">Você está navegando como <strong>convidado</strong></span>
-            <a href="#" class="guest-banner-link" id="guestBannerLink">Fazer login ou registrar</a>
+            <span class="guest-banner-text">Modo <strong>Convidado</strong></span>
+            <a href="#" class="guest-banner-link" id="guestBannerLink">Entrar</a>
         </div>
     </div>
 

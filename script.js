@@ -12,6 +12,7 @@
     let commandNotification, notificationIcon, notificationText; // Notificação de comando
     let authModal, loginForm, registerForm, authTabs, authClose; // Elementos de autenticação
     let logoutBtn; // Botão de logout
+    let adminBtn; // Botão de admin
     let guestLoginBtn, guestLoginBtnRegister; // Botões de login como convidado
     let guestBanner, guestBannerLink; // Banner de usuário anônimo
     let isGuestMode = false; // Flag para modo guest
@@ -148,6 +149,7 @@
         authTabs = document.querySelectorAll(".auth-tab"); // Tabs de autenticação
         authClose = document.getElementById("authClose"); // Botão de fechar modal
         logoutBtn = document.getElementById("logoutBtn"); // Botão de logout
+        adminBtn = document.getElementById("adminBtn"); // Botão de admin
         guestLoginBtn = document.getElementById("guestLoginBtn"); // Botão de login como convidado (login)
         guestLoginBtnRegister = document.getElementById("guestLoginBtnRegister"); // Botão de login como convidado (registro)
         guestBanner = document.getElementById("guestBanner"); // Banner de usuário anônimo
@@ -429,6 +431,16 @@
         if (logoutBtn && logoutBtn.style.display !== "none") {
             logoutBtn.classList.remove("hidden");
         }
+        // Mostrar banner de convidado se estiver ativo
+        if (guestBanner && guestBanner.classList.contains("active")) {
+            guestBanner.style.opacity = "1";
+            guestBanner.style.pointerEvents = "auto";
+        }
+        // Mostrar botão de admin se estiver visível
+        if (adminBtn && adminBtn.style.display !== "none") {
+            adminBtn.style.opacity = "1";
+            adminBtn.style.pointerEvents = "auto";
+        }
         // Mostrar cursor
         if (player) {
             player.classList.remove("cursor-hidden");
@@ -460,6 +472,18 @@
                 if (logoutBtn && logoutBtn.style.display !== "none") {
                     logoutBtn.classList.add("hidden");
                 }
+                // Esconder banner de convidado junto com os controles
+                if (guestBanner && guestBanner.classList.contains("active")) {
+                    guestBanner.style.opacity = "0";
+                    guestBanner.style.pointerEvents = "none";
+                    guestBanner.style.transition = "opacity 0.3s ease";
+                }
+                // Esconder botão de admin junto com os controles
+                if (adminBtn && adminBtn.style.display !== "none") {
+                    adminBtn.style.opacity = "0";
+                    adminBtn.style.pointerEvents = "none";
+                    adminBtn.style.transition = "opacity 0.3s ease";
+                }
                 // Esconder cursor
                 if (player) {
                     player.classList.add("cursor-hidden");
@@ -484,6 +508,16 @@
             return true;
         }
         
+        // Verificar se está sobre o botão de admin
+        if (hoveredElement.closest('.admin-btn-player')) {
+            return true;
+        }
+        
+        // Verificar se está sobre o banner de convidado
+        if (hoveredElement.closest('.guest-banner')) {
+            return true;
+        }
+        
         // Verificar se está sobre o botão de like
         if (hoveredElement.closest('.like-btn')) {
             return true;
@@ -502,35 +536,6 @@
         const percent = volume.value * 100;
         volume.style.setProperty("--volume-percent", percent + "%");
     }
-    
-    // Verificar se o mouse está sobre os controles ou botão de logout
-    function isMouseOverControls() {
-        // Verificar se existe um elemento com mouse sobre ele
-        const hoveredElement = document.querySelector(':hover');
-        if (!hoveredElement) return false;
-        
-        // Verificar se está sobre a barra de controles
-        if (hoveredElement.closest('.controls') || hoveredElement.closest('.controls-row')) {
-            return true;
-        }
-        
-        // Verificar se está sobre o botão de logout
-        if (hoveredElement.closest('.logout-btn')) {
-            return true;
-        }
-        
-        // Verificar se está sobre o botão de like
-        if (hoveredElement.closest('.like-btn')) {
-            return true;
-        }
-        
-        // Verificar se está sobre o botão de comentários
-        if (hoveredElement.closest('.comments-btn')) {
-            return true;
-        }
-        
-        return false;
-    }
 
     // Inicializar eventos e controles
     function initEventListeners() {
@@ -540,6 +545,13 @@
         if (logoutBtn) {
             logoutBtn.addEventListener("click", async () => {
                 await handleLogout();
+            });
+        }
+
+        // Event listener para botão de admin
+        if (adminBtn) {
+            adminBtn.addEventListener("click", () => {
+                window.location.href = 'admin.html';
             });
         }
 
@@ -836,8 +848,8 @@ fullscreen.onclick = () => {
 
         player.addEventListener("mouseleave", (e) => {
             const relatedTarget = e.relatedTarget;
-            // Não esconder se o mouse estiver indo para os controles ou botão de logout
-            if (relatedTarget && (relatedTarget.closest(".queue-menu") || relatedTarget.closest(".queue-toggle-btn") || relatedTarget.closest(".controls-row") || relatedTarget.closest(".logout-btn") || relatedTarget.closest(".controls"))) {
+            // Não esconder se o mouse estiver indo para os controles, botão de logout, admin ou banner de convidado
+            if (relatedTarget && (relatedTarget.closest(".queue-menu") || relatedTarget.closest(".queue-toggle-btn") || relatedTarget.closest(".controls-row") || relatedTarget.closest(".logout-btn") || relatedTarget.closest(".admin-btn-player") || relatedTarget.closest(".guest-banner") || relatedTarget.closest(".controls"))) {
                 return;
             }
             hideControls();
@@ -2609,33 +2621,100 @@ fullscreen.onclick = () => {
             return true;
         }
         
+        // Tentar inicializar Supabase se não estiver inicializado
         if (!supabaseClient) {
-            if (!initSupabase()) {
-                console.error('Supabase não inicializado');
+            if (typeof supabase !== 'undefined') {
+                initSupabase();
+            } else {
+                // Supabase ainda não carregou - mostrar modal de login
+                console.warn('Supabase ainda não carregou, mostrando modal de login');
+                showAuthModal();
                 return false;
             }
         }
         
-        const { data: { session }, error } = await supabaseClient.auth.getSession();
-        if (error) {
-            console.error('Erro ao verificar sessão:', error);
+        // Se ainda não temos cliente após tentar inicializar, mostrar modal
+        if (!supabaseClient) {
+            console.error('Supabase não inicializado - mostrando modal de login');
+            showAuthModal();
             return false;
         }
         
-        if (session) {
-            // Usuário autenticado
-            isGuestMode = false; // Garantir que não está em modo guest
-            hideAuthModal();
-            updateGuestUI();
-            return true;
-        } else {
-            // Usuário não autenticado
+        try {
+            const { data: { session }, error } = await supabaseClient.auth.getSession();
+            if (error) {
+                console.error('Erro ao verificar sessão:', error);
+                showAuthModal();
+                return false;
+            }
+            
+            if (session) {
+                // Usuário autenticado
+                isGuestMode = false; // Garantir que não está em modo guest
+                hideAuthModal();
+                updateGuestUI();
+                return true;
+            } else {
+                // Usuário não autenticado
+                showAuthModal();
+                updateGuestUI();
+                return false;
+            }
+        } catch (error) {
+            console.error('Exceção ao verificar autenticação:', error);
             showAuthModal();
-            updateGuestUI();
             return false;
         }
     }
     
+    // Verificar se usuário é admin
+    async function checkAdminStatus() {
+        try {
+            if (!supabaseClient) return false;
+            if (isGuestMode) return false;
+
+            const { data: { session } } = await supabaseClient.auth.getSession();
+            if (!session) return false;
+
+            // Verificar status admin usando RPC
+            const { data: isAdminData, error: rpcError } = await supabaseClient.rpc('check_user_admin');
+            
+            if (rpcError) {
+                console.error('Erro ao verificar admin:', rpcError);
+                // Fallback: buscar direto da tabela
+                const { data: profile, error: profileError } = await supabaseClient
+                    .from('profiles')
+                    .select('is_admin')
+                    .eq('id', session.user.id)
+                    .single();
+                
+                if (profileError) {
+                    console.error('Erro ao buscar perfil:', profileError);
+                    return false;
+                }
+                
+                return profile?.is_admin === true;
+            }
+            
+            return isAdminData === true;
+        } catch (error) {
+            console.error('Erro ao verificar status admin:', error);
+            return false;
+        }
+    }
+
+    // Atualizar visibilidade do botão de admin
+    async function updateAdminButton() {
+        if (!adminBtn) return;
+
+        const isAdmin = await checkAdminStatus();
+        if (isAdmin) {
+            adminBtn.style.display = "flex";
+        } else {
+            adminBtn.style.display = "none";
+        }
+    }
+
     // Atualizar UI baseado no modo guest
     async function updateGuestUI() {
         if (isGuestMode) {
@@ -2647,6 +2726,10 @@ fullscreen.onclick = () => {
             if (logoutBtn) {
                 logoutBtn.style.display = "flex";
                 logoutBtn.classList.remove("hidden");
+            }
+            // Esconder botão de admin em modo guest
+            if (adminBtn) {
+                adminBtn.style.display = "none";
             }
             // Mostrar botões de like e comentários (mas desabilitados)
             if (likeBtn) {
@@ -2695,11 +2778,16 @@ fullscreen.onclick = () => {
                         commentsBtn.style.display = "flex";
                         commentsBtn.classList.remove("disabled");
                     }
+                    // Verificar e mostrar botão de admin se for admin
+                    await updateAdminButton();
                 } else {
                     // Não autenticado - esconder botões
                     if (logoutBtn) {
                         logoutBtn.style.display = "none";
                         logoutBtn.classList.add("hidden");
+                    }
+                    if (adminBtn) {
+                        adminBtn.style.display = "none";
                     }
                     if (likeBtn) {
                         likeBtn.style.display = "none";
@@ -2716,6 +2804,9 @@ fullscreen.onclick = () => {
                     logoutBtn.style.display = "none";
                     logoutBtn.classList.add("hidden");
                 }
+                if (adminBtn) {
+                    adminBtn.style.display = "none";
+                }
                 if (likeBtn) {
                     likeBtn.style.display = "none";
                     likeBtn.classList.remove("disabled");
@@ -2730,11 +2821,15 @@ fullscreen.onclick = () => {
     
     // Mostrar modal de autenticação
     function showAuthModal() {
+        console.log('Mostrando modal de autenticação');
         if (authModal) {
             authModal.classList.add("active");
             document.body.style.overflow = "hidden";
+            console.log('Modal de autenticação ativado');
+        } else {
+            console.error('authModal não encontrado no DOM');
         }
-        updateGuestUI();
+        // Não chamar updateGuestUI aqui para evitar loops
     }
     
     // Esconder modal de autenticação
@@ -2793,6 +2888,16 @@ fullscreen.onclick = () => {
         // Login bem-sucedido - resetar modo guest
         isGuestMode = false;
         hideAuthModal();
+        
+        // Verificar se é admin e fazer log
+        const isAdmin = await checkAdminStatus();
+        if (isAdmin) {
+            console.log('✅ Login realizado com sucesso - Usuário é ADMIN');
+        } else {
+            console.log('✅ Login realizado com sucesso - Usuário NÃO é admin');
+        }
+        
+        await updateAdminButton(); // Verificar e mostrar botão de admin se for admin
         loadVideosFromDatabase();
         return true;
     }
@@ -3254,19 +3359,33 @@ fullscreen.onclick = () => {
         initAuthModalClickOutside(); // Fechar modal de autenticação ao clicar fora
         
         // Verificar autenticação antes de carregar vídeos
-        const isAuthenticated = await checkAuth();
-        
-        if (isAuthenticated) {
-            // Aguardar Supabase estar disponível antes de carregar vídeos
-            function waitForSupabase() {
-                if (typeof supabase !== 'undefined' && supabaseClient) {
-                    loadVideosFromDatabase();
-                } else {
-                    setTimeout(waitForSupabase, 100);
-                }
-            }
+        // Garantir que o modal seja exibido se não houver autenticação
+        try {
+            const isAuthenticated = await checkAuth();
             
-            waitForSupabase();
+            // Sempre atualizar UI após verificar autenticação
+            await updateGuestUI();
+            
+            if (isAuthenticated) {
+                // Aguardar Supabase estar disponível antes de carregar vídeos
+                function waitForSupabase() {
+                    if (typeof supabase !== 'undefined' && supabaseClient) {
+                        loadVideosFromDatabase();
+                    } else {
+                        setTimeout(waitForSupabase, 100);
+                    }
+                }
+                
+                waitForSupabase();
+            } else {
+                // Se não autenticado, garantir que o modal está visível
+                console.log('Usuário não autenticado - exibindo modal de login');
+                showAuthModal();
+            }
+        } catch (error) {
+            console.error('Erro ao verificar autenticação na inicialização:', error);
+            // Em caso de erro, mostrar modal de login
+            showAuthModal();
         }
     }
 

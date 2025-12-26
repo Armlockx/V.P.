@@ -67,3 +67,4 @@
 - Watch_time deve começar a atualizar
 - Likes e comentários devem aparecer para guests
 
+

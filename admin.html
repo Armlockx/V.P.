@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- Content Security Policy para prevenir XSS e ataques de injeção -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://esvjyjnyrmysvylnszjd.supabase.co; style-src 'self' 'unsafe-inline'; img-src 'self' data: https: blob:; media-src 'self' https: blob:; connect-src 'self' https://esvjyjnyrmysvylnszjd.supabase.co https://cdn.jsdelivr.net; font-src 'self' data: https:; object-src 'none'; base-uri 'self'; form-action 'self';">
+    <title>Painel Admin - V.P. Player</title>
+    <link rel="stylesheet" href="style.css" />
+    <link rel="icon" href="logoIcon.png">
+    <script src="config.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        /* Override para página admin */
+        body {
+            overflow-y: auto !important;
+            overflow-x: hidden !important;
+            height: auto !important;
+        }
+    </style>
+</head>
+<body>
+    <div class="admin-container">
+        <!-- Header do Admin -->
+        <header class="admin-header">
+            <div class="admin-header-content">
+                <h1>Painel de Administração</h1>
+                <div class="admin-header-actions">
+                    <button class="admin-back-btn" id="adminBackBtn">Voltar ao Player</button>
+                    <button class="admin-logout-btn" id="adminLogoutBtn">Sair</button>
+                </div>
+            </div>
+        </header>
+
+        <!-- Loading State -->
+        <div class="admin-loading" id="adminLoading">
+            <div class="admin-loading-spinner"></div>
+            <p>Verificando permissões...</p>
+        </div>
+
+        <!-- Access Denied -->
+        <div class="admin-access-denied" id="adminAccessDenied" style="display: none;">
+            <div class="access-denied-content">
+                <h2>⛔ Acesso Negado</h2>
+                <p>Você não tem permissão para acessar o painel de administração.</p>
+                <button class="admin-back-btn" onclick="window.location.href='index.html'">Voltar ao Player</button>
+            </div>
+        </div>
+
+        <!-- Admin Dashboard -->
+        <div class="admin-dashboard" id="adminDashboard" style="display: none;">
+            <!-- User Info Section -->
+            <section class="admin-section">
+                <h2>Informações do Usuário</h2>
+                <div class="admin-user-info" id="adminUserInfo">
+                    <!-- User info will be loaded here -->
+                </div>
+            </section>
+
+            <!-- Videos Management Section -->
+            <section class="admin-section">
+                <h2>Gerenciamento de Vídeos</h2>
+                <div class="admin-videos-controls">
+                    <input type="text" id="videosSearchInput" class="admin-search-input" placeholder="Buscar vídeos...">
+                    <button class="admin-btn admin-btn-primary" id="refreshVideosBtn">Atualizar</button>
+                    <button class="admin-btn admin-btn-success" id="addVideoBtn">+ Adicionar</button>
+                    <button class="admin-btn admin-btn-warning" id="editVideoBtn" disabled>✏️ Editar</button>
+                    <button class="admin-btn admin-btn-danger" id="deleteVideoBtn" disabled>🗑️ Excluir</button>
+                </div>
+                <div class="admin-videos-container">
+                    <div class="admin-videos-list-wrapper">
+                        <div class="admin-videos-list" id="adminVideosList">
+                            <!-- Videos list will be loaded here -->
+                        </div>
+                    </div>
+                    <div class="admin-video-preview" id="adminVideoPreview">
+                        <div class="admin-preview-header">
+                            <h3>Preview do Vídeo</h3>
+                        </div>
+                        <div class="admin-preview-content">
+                            <div class="admin-preview-placeholder">
+                                <div class="admin-preview-icon">🎬</div>
+                                <p>Selecione um vídeo para visualizar o preview</p>
+                            </div>
+                            <div class="admin-preview-video" id="previewVideoContent" style="display: none;">
+                                <div class="admin-preview-thumbnail-wrapper">
+                                    <img id="previewThumbnail" src="" alt="Preview thumbnail" class="admin-preview-thumbnail">
+                                    <div class="admin-preview-duration" id="previewDuration"></div>
+                                </div>
+                                <div class="admin-preview-info">
+                                    <h4 id="previewTitle"></h4>
+                                    <div class="admin-preview-meta">
+                                        <div class="admin-preview-meta-item">
+                                            <span class="admin-preview-meta-label">Views:</span>
+                                            <span class="admin-preview-meta-value" id="previewViews">0</span>
+                                        </div>
+                                        <div class="admin-preview-meta-item">
+                                            <span class="admin-preview-meta-label">Tempo assistido:</span>
+                                            <span class="admin-preview-meta-value" id="previewWatchTime">0s</span>
+                                        </div>
+                                        <div class="admin-preview-meta-item">
+                                            <span class="admin-preview-meta-label">Ordem:</span>
+                                            <span class="admin-preview-meta-value" id="previewOrder">-</span>
+                                        </div>
+                                        <div class="admin-preview-meta-item">
+                                            <span class="admin-preview-meta-label">Criado em:</span>
+                                            <span class="admin-preview-meta-value" id="previewCreatedAt">-</span>
+                                        </div>
+                                    </div>
+                                    <div class="admin-preview-url">
+                                        <label>URL do Vídeo:</label>
+                                        <div class="admin-preview-url-value" id="previewUrl" title=""></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Users Management Section -->
+            <section class="admin-section">
+                <h2>Gerenciamento de Usuários</h2>
+                <div class="admin-users-controls">
+                    <input type="text" id="usersSearchInput" class="admin-search-input" placeholder="Buscar usuários...">
+                    <button class="admin-btn admin-btn-primary" id="refreshUsersBtn">Atualizar Lista</button>
+                </div>
+                <div class="admin-users-list" id="adminUsersList">
+                    <!-- Users list will be loaded here -->
+                </div>
+            </section>
+
+            <!-- Statistics Section -->
+            <section class="admin-section">
+                <h2>Estatísticas Gerais</h2>
+                <div class="admin-stats-grid" id="adminStatsGrid">
+                    <!-- Statistics will be loaded here -->
+                </div>
+            </section>
+        </div>
+    </div>
+
+    <!-- Modal de Edição/Adição de Vídeo -->
+    <div class="admin-modal" id="videoEditModal" style="display: none;">
+        <div class="admin-modal-overlay"></div>
+        <div class="admin-modal-content">
+            <div class="admin-modal-header">
+                <h2 id="videoModalTitle">Adicionar Novo Vídeo</h2>
+                <button class="admin-modal-close" id="videoModalClose">×</button>
+            </div>
+            <form id="videoEditForm" class="admin-modal-form">
+                <input type="hidden" id="editVideoId" value="">
+                
+                <div class="admin-form-group">
+                    <label for="editVideoTitle">Título do Vídeo *</label>
+                    <input type="text" id="editVideoTitle" required placeholder="Digite o título do vídeo" maxlength="200">
+                </div>
+
+                <div class="admin-form-group">
+                    <label for="editVideoUrl">URL do Vídeo *</label>
+                    <input type="url" id="editVideoUrl" required placeholder="https://exemplo.com/video.mp4">
+                    <small class="admin-form-hint">URL completa do arquivo de vídeo</small>
+                </div>
+
+                <div class="admin-form-group">
+                    <label for="editVideoThumbnail">URL da Thumbnail *</label>
+                    <input type="url" id="editVideoThumbnail" required placeholder="https://exemplo.com/thumbnail.jpg">
+                    <small class="admin-form-hint">URL da imagem de capa do vídeo</small>
+                </div>
+
+                <div class="admin-form-group">
+                    <label for="editVideoDuration">Duração (formato: MM:SS)</label>
+                    <input type="text" id="editVideoDuration" placeholder="3:22" pattern="[0-9]+:[0-5][0-9]">
+                    <small class="admin-form-hint">Exemplo: 3:22 para 3 minutos e 22 segundos</small>
+                </div>
+
+                <div class="admin-form-group">
+                    <label for="editVideoOrder">Ordem de Exibição</label>
+                    <input type="number" id="editVideoOrder" min="0" value="0">
+                    <small class="admin-form-hint">Números menores aparecem primeiro na fila</small>
+                </div>
+
+                <div class="admin-form-group">
+                    <label for="editVideoUserId">ID do Usuário (Uploader)</label>
+                    <input type="text" id="editVideoUserId" placeholder="UUID do usuário (opcional)">
+                    <small class="admin-form-hint">Deixe em branco para manter o atual</small>
+                </div>
+
+                <div class="admin-form-actions">
+                    <button type="button" class="admin-btn admin-btn-secondary" id="videoModalCancel">Cancelar</button>
+                    <button type="submit" class="admin-btn admin-btn-primary" id="videoModalSave">Salvar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script src="admin.js"></script>
+</body>
+</html>
+
