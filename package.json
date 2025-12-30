@@ -1,17 +1,33 @@
 {
-  "name": "player-test",
-  "version": "1.0.0",
-  "description": "Netflix-style video player with Supabase integration",
-  "main": "index.html",
+  "name": "vp-player-nextjs",
+  "version": "2.0.0",
+  "description": "Netflix-style video player with Supabase integration - Next.js version",
+  "private": true,
   "scripts": {
-    "dev": "npx serve .",
-    "build": "echo 'No build step required'"
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "next": "^14.0.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "@supabase/supabase-js": "^2.38.0",
+    "@supabase/ssr": "^0.0.10"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/react": "^18.2.0",
+    "@types/react-dom": "^18.2.0",
+    "typescript": "^5.0.0"
   },
   "keywords": [
     "video",
     "player",
     "netflix",
-    "supabase"
+    "supabase",
+    "nextjs"
   ],
   "author": "",
   "license": "MIT"
